@@ -1,0 +1,77 @@
+function(X,
+                      WL,
+                      COORDS,
+                      BASE,
+                      OU=NULL,
+                      col=c(rgb(46,139,87,255,maxColorValue=255),
+                            rgb(117,107,177,255,maxColorValue=255),
+                            rgb(77,77,77,255,maxColorValue=255)),
+                      colline=c(rgb(46,139,87,255,maxColorValue=255),
+                                rgb(117,107,177,255,maxColorValue=255),
+                                rgb(77,77,77,255,maxColorValue=255)),
+                      pch=c(21,21,21),
+                      bg=c(rgb(46,139,87,100,maxColorValue=255),
+                           rgb(117,107,177,100,maxColorValue=255),
+                           rgb(77,77,77,100,maxColorValue=255)),
+                      wlcol='black',
+                      wlbg='white',
+                      ylab='Concentration',
+                      cex=0.8){
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Set-up--#
+  par(mar=c(1,1,1,1))
+  if(is.null(WL)){
+    layout(matrix(c(1,1,2,2,3,4,5,5,6,6), ncol=2, nrow=5, byrow=TRUE), heights=c(2,3,4,5,5), widths=c(4,4))
+  } else {
+    layout(matrix(c(1,1,2,2,3,4,5,5,6,6,7,7), ncol=2, nrow=6, byrow=TRUE), heights=c(2,5,4,5,5,7), widths=c(4,4))
+  }
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Header--#
+  par(mar=c(0,0,1,0))
+  pltHeader(X)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Header Summary Table--#
+  par(mar=c(0,0,1,0))
+  pltHeaderSum(X, WL)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Lag Correlation--#
+  par(mar=c(0.5,5,0,0.5), mgp=c(1.8,0.3,0))
+  pltMap(X, COORDS, BASE, OU)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Legend--#
+  par(mar=c(0.5,5,0,0.5), mgp=c(1.8,0.3,0))
+  pltTobitLegend(X, WL, col=col, bg=bg)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Water-Levels and River Stage
+  if(!is.null(WL)){
+    par(mar=c(0.5,5,0,5))
+    plttscovariate(WL,log=FALSE,title=FALSE,col=wlcol,bg=wlbg,colline='black',collinecov=rgb(30,144,255,100,maxColorValue=255),ylab1='Water-Level (m amsl)',lwd=2,axis=FALSE)
+  }
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Chemistry and River Stage--#
+  par(mar=c(0.5,5,1,5))
+  plttscovariate(X,dep='VAL',log=TRUE,title=FALSE,col=col,colline=colline,bg=bg,ylab1=ylab,axis=TRUE,collinecov=rgb(30,144,255,100,maxColorValue=255),pch=pch)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Regression--#
+  par(mar=c(3,5,4,4), mgp=c(1.8,0.3,0))
+  plot.new()
+  mtext('No Regression Analysis Performed',cex=cex)
+  #---------------------------------------------------------------------------------#
+
+}
+<environment: namespace:sspaHanfordTrends>

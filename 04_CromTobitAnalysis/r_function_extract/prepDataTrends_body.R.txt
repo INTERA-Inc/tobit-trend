@@ -1,0 +1,153 @@
+### sspaTrendAnalysis::prepDataTrends
+
+{
+    if (!is.null(CHEM) & !length(CHEMCOL) == 8) {
+        N <- length(CHEMCOL)
+        stop(paste("Missing required columns.  Chemistry dataset requires 8 columns.   Dataset only has", 
+            N, "columns."))
+    }
+    if (!is.null(RS) & !length(RSCOL) == 4) {
+        N <- length(RSCOL)
+        stop(paste("Missing required columns.  River stage dataset requires 4 columns.  Dataset only has", 
+            N, "columns."))
+    }
+    if (!is.null(WL) & !length(WLCOL) == 5) {
+        N <- length(WLCOL)
+        stop(paste("Missing required columns.  Water Level dataset requires 5 columns.  Dataset only has", 
+            N, "columns."))
+    }
+    if (!is.null(CHEM)) {
+        CHEM <- copy(CHEM)
+        if (!"data.table" %in% class(CHEM)) {
+            CHEM <- data.table(CHEM)
+        }
+        CHEM <- subset(CHEM, select = CHEMCOL)
+        setnames(CHEM, CHEMCOL, c("NAME", "EVENT", "ANALYTE", 
+            "FILTERED", "VAL", "QUAL", "UNITS", "MDL"))
+        if (DAILY) {
+            CHEM$EVENT <- as.Date(CHEM$EVENT, format = "%Y-%m-%d")
+        }
+        else {
+            CHEM$EVENT <- ISOdatetime(year(CHEM$EVENT), month(CHEM$EVENT), 
+                as.numeric(format(CHEM$EVENT, "%d")), hour(CHEM$EVENT), 
+                0, 0)
+        }
+        CHEM$VAL <- as.numeric(CHEM$VAL)
+        CHEM <- CHEM[which(CHEM$EVENT >= MINDATE & CHEM$EVENT <= 
+            MAXDATE), ]
+        CHEM$NDS <- FALSE
+        CHEM$NDS[grep("U", CHEM$QUAL)] <- TRUE
+        if (POSITIVE) {
+            CHEM_SUB <- subset(CHEM, CHEM$VAL <= 0 & is.na(CHEM$MDL))
+            if (nrow(CHEM_SUB) > 0) {
+                warning(paste("Dataset contains zeros or negative values and no MDL.  A value of ", 
+                  MDLSUB, " was to replace the missing MDL."))
+            }
+            CHEM$MDL <- ifelse(CHEM$VAL <= 0 & is.na(CHEM$MDL), 
+                MDLSUB, CHEM$MDL)
+            CHEM$QUAL <- ifelse(CHEM$VAL <= 0 & CHEM$QUAL == 
+                "", "U", CHEM$QUAL)
+            CHEM$NDS <- ifelse(CHEM$VAL <= 0 & CHEM$QUAL == "", 
+                TRUE, CHEM$NDS)
+            CHEM$VAL <- ifelse(CHEM$VAL <= 0, CHEM$MDL, CHEM$VAL)
+        }
+        else {
+            CHEM_SUB <- subset(CHEM, CHEM$VAL == 0 & is.na(CHEM$MDL))
+            if (nrow(CHEM_SUB) > 0) {
+                warning(paste("Dataset contains zeros and no MDL.  A value of ", 
+                  MDLSUB, " was to replace the missing MDL."))
+            }
+            CHEM$MDL <- ifelse(CHEM$VAL == 0 & is.na(CHEM$MDL), 
+                MDLSUB, CHEM$MDL)
+            CHEM$QUAL <- ifelse(CHEM$VAL == 0 & CHEM$QUAL == 
+                "", "U", CHEM$QUAL)
+            CHEM$NDS <- ifelse(CHEM$VAL == 0 & CHEM$QUAL == "", 
+                TRUE, CHEM$NDS)
+            CHEM$VAL <- ifelse(CHEM$VAL == 0, CHEM$MDL, CHEM$VAL)
+        }
+        if (is.na(min(CHEM$VAL))) {
+            warning(paste("NAs in dataset.  NAs removed from dataset."))
+            CHEM <- subset(CHEM, !is.na(CHEM$VAL))
+        }
+        else if (min(CHEM$VAL) < 0) {
+            warning(paste("Negative values in dataset.  Evaluate before working in log-space."))
+        }
+        CHEM <- removeDups(CHEM, TYPE = "Chemistry", FIL = FIL)
+        CHEM <- CHEM[order(CHEM$EVENT), ]
+    }
+    if (!is.null(RS)) {
+        RS <- copy(RS)
+        if (!"data.table" %in% class(RS)) {
+            RS <- data.table(RS)
+        }
+        RS_NAMES <- unique(RS$NAME)
+        if (length(RS_NAMES) > 1) {
+            N <- length(RS_NAMES)
+            stop(paste("Multiple River Stage Measurement Locations."))
+        }
+        RS <- subset(RS, select = RSCOL)
+        setnames(RS, RSCOL, c("NAME", "EVENT", "STAGE", "UNITS"))
+        if (DAILY) {
+            RS$EVENT <- as.Date(RS$EVENT, format = "%Y-%m-%d")
+        }
+        else {
+            RS$EVENT <- ISOdatetime(year(RS$EVENT), month(RS$EVENT), 
+                as.numeric(format(RS$EVENT, "%d")), hour(RS$EVENT), 
+                0, 0)
+        }
+        RS <- RS[which(as.Date(RS$EVENT) >= MINDATE & as.Date(RS$EVENT) <= 
+            MAXDATE), ]
+        RS <- subset(RS, !is.na(RS$STAGE))
+        RS <- removeDups(RS, TYPE = "River")
+        RS <- interpRS(RS)
+        RS <- RS[order(RS$EVENT), ]
+    }
+    if (!is.null(WL)) {
+        WLDUPE <- match.arg(WLDUPE)
+        WL <- copy(WL)
+        if (!"data.table" %in% class(WL)) {
+            WL <- data.table(WL)
+        }
+        WL <- subset(WL, select = WLCOL)
+        setnames(WL, WLCOL, c("NAME", "EVENT", "WLE", "TYPE", 
+            "UNITS"))
+        if (DAILY) {
+            WL$EVENT <- as.Date(WL$EVENT, format = "%Y-%m-%d")
+        }
+        else {
+            WL$EVENT <- ISOdatetime(year(WL$EVENT), month(WL$EVENT), 
+                as.numeric(format(WL$EVENT, "%d")), hour(WL$EVENT), 
+                0, 0)
+        }
+        WL <- WL[which(as.Date(WL$EVENT) >= MINDATE & as.Date(WL$EVENT) <= 
+            MAXDATE), ]
+        WL <- subset(WL, !is.na(WL$WLE))
+        WL <- removeDups(WL, TYPE = "Waterlevel", MAN = MAN, 
+            TRANS = TRANS, WLDUPE = WLDUPE)
+        if (WLINTERP) {
+            WL <- interpWL(WL)
+        }
+        WL <- WL[order(WL$EVENT), ]
+    }
+    if (!is.null(CHEM) & is.null(RS) & is.null(WL)) {
+        return(CHEM)
+    }
+    else if (is.null(CHEM) & !is.null(RS) & is.null(WL)) {
+        return(RS)
+    }
+    else if (is.null(CHEM) & is.null(RS) & !is.null(WL)) {
+        return(WL)
+    }
+    else if (!is.null(CHEM) & !is.null(RS) & is.null(WL)) {
+        return(list(CHEM = CHEM, RS = RS))
+    }
+    else if (!is.null(CHEM) & is.null(RS) & !is.null(WL)) {
+        return(list(CHEM = CHEM, WL = WL))
+    }
+    else if (is.null(CHEM) & !is.null(RS) & !is.null(WL)) {
+        return(list(RS = RS, WL = WL))
+    }
+    else if (!is.null(CHEM) & !is.null(RS) & !is.null(WL)) {
+        return(list(CHEM = CHEM, RS = RS, WL = WL))
+    }
+}

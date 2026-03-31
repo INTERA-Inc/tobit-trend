@@ -1,0 +1,207 @@
+{
+    WLDUPE <- match.arg(WLDUPE)
+    if (TYPE == "River") {
+        X <- data.table(X)[, list(STAGE = mean(STAGE)), by = c("NAME", 
+            "EVENT", "UNITS")]
+    }
+    if (TYPE == "Chemistry") {
+        if (FIL) {
+            X$MATCH <- paste0(X$NAME, "-", X$EVENT, "-", X$ANALYTE, 
+                "-", X$FILTERED)
+            DUPS <- X[duplicated(X$MATCH)]
+            MAT <- unique(DUPS$MATCH)
+            NROWS <- which(X$MATCH %in% DUPS$MATCH)
+            if (length(NROWS) > 0) {
+                D <- NULL
+                for (i in 1:length(MAT)) {
+                  SUB <- subset(X, X$MATCH == MAT[i])
+                  if (all(SUB$NDS == TRUE)) {
+                    qual <- "U"
+                    SUB <- data.table(SUB)[, list(VAL = max(VAL)), 
+                      by = c("NAME", "EVENT", "ANALYTE", "FILTERED", 
+                        "UNITS")]
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  else if (all(SUB$NDS == FALSE)) {
+                    qual <- ""
+                    SUB <- data.table(SUB)[, list(VAL = mean(VAL)), 
+                      by = c("NAME", "EVENT", "ANALYTE", "FILTERED", 
+                        "UNITS")]
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  else {
+                    qual <- ""
+                    if (nrow(SUB) > 2 & nrow(SUB[NDS == FALSE]) > 
+                      2) {
+                      value <- enparCensored(SUB$VAL, SUB$NDS)$parameters[[1]]
+                    }
+                    else {
+                      value <- mean(SUB$VAL)
+                    }
+                    SUB <- data.table(NAME = SUB$NAME[1], EVENT = SUB$EVENT[1], 
+                      ANALYTE = SUB$ANALYTE[1], FILTERED = SUB$FILTERED[1], 
+                      UNITS = SUB$UNITS[1], VAL = value)
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  SUB$QUAL <- qual
+                  if (qual == "U") {
+                    SUB$NDS <- TRUE
+                  }
+                  else {
+                    SUB$NDS <- FALSE
+                  }
+                  SUB <- subset(SUB, select = c("NAME", "EVENT", 
+                    "ANALYTE", "FILTERED", "VAL", "QUAL", "UNITS", 
+                    "MDL", "NDS"))
+                  D <- rbind(D, SUB)
+                }
+                X <- X[-NROWS, ]
+                X$MATCH <- NULL
+                X <- subset(X, select = c("NAME", "EVENT", "ANALYTE", 
+                  "FILTERED", "VAL", "QUAL", "UNITS", "MDL", 
+                  "NDS"))
+                X <- rbind(X, D)
+            }
+            else {
+                X$MATCH <- NULL
+            }
+        }
+        else {
+            X$MATCH <- paste0(X$NAME, "-", X$EVENT, "-", X$ANALYTE)
+            DUPS <- X[duplicated(X$MATCH)]
+            MAT <- unique(DUPS$MATCH)
+            NROWS <- which(X$MATCH %in% DUPS$MATCH)
+            if (length(NROWS) > 0) {
+                D <- NULL
+                for (i in 1:length(MAT)) {
+                  SUB <- subset(X, X$MATCH == MAT[i])
+                  if (all(SUB$NDS == TRUE)) {
+                    qual <- "U"
+                    SUB <- data.table(SUB)[, list(VAL = max(VAL)), 
+                      by = c("NAME", "EVENT", "ANALYTE", "UNITS")]
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  else if (all(SUB$NDS == FALSE)) {
+                    qual <- ""
+                    SUB <- data.table(SUB)[, list(VAL = mean(VAL)), 
+                      by = c("NAME", "EVENT", "ANALYTE", "UNITS")]
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  else {
+                    qual <- ""
+                    if (nrow(SUB) > 2 & nrow(SUB[NDS == FALSE]) > 
+                      2) {
+                      if (length(unique(SUB[NDS == FALSE]$VAL)) == 
+                        1) {
+                        value <- unique(SUB[NDS == FALSE]$VAL)
+                      }
+                      else {
+                        value <- enparCensored(SUB$VAL, SUB$NDS)$parameters[[1]]
+                      }
+                    }
+                    else {
+                      value <- mean(SUB$VAL)
+                    }
+                    SUB <- data.table(NAME = SUB$NAME[1], EVENT = SUB$EVENT[1], 
+                      ANALYTE = SUB$ANALYTE[1], UNITS = SUB$UNITS[1], 
+                      VAL = value)
+                    mdl <- ifelse(all(is.na(SUB$MDL)), NA, max(SUB$MDL, 
+                      na.rm = TRUE))
+                    SUB$MDL <- mdl
+                  }
+                  SUB$QUAL <- qual
+                  SUB$FILTERED <- "N"
+                  if (qual == "U") {
+                    SUB$NDS <- TRUE
+                  }
+                  else {
+                    SUB$NDS <- FALSE
+                  }
+                  SUB <- subset(SUB, select = c("NAME", "EVENT", 
+                    "ANALYTE", "FILTERED", "VAL", "QUAL", "UNITS", 
+                    "MDL", "NDS"))
+                  D <- rbind(D, SUB)
+                }
+                X <- X[-NROWS, ]
+                X$MATCH <- NULL
+                X <- subset(X, select = c("NAME", "EVENT", "ANALYTE", 
+                  "FILTERED", "VAL", "QUAL", "UNITS", "MDL", 
+                  "NDS"))
+                X <- rbind(X, D)
+            }
+            else {
+                X$MATCH <- NULL
+            }
+        }
+    }
+    if (TYPE == "Waterlevel") {
+        X <- data.table(X)[, list(WLE = mean(WLE)), by = c("NAME", 
+            "EVENT", "TYPE", "UNITS")]
+        WL <- subset(X, select = c("NAME", "EVENT"))
+        WL$MATCH <- paste0(WL$NAME, "-", WL$EVENT)
+        WL <- WL[!duplicated(WL$MATCH)]
+        WL <- subset(WL, select = c("NAME", "EVENT"))
+        MAN_DATA <- subset(X, X$TYPE == MAN)
+        TRANS_DATA <- subset(X, X$TYPE == TRANS)
+        setnames(MAN_DATA, c("EVENT", "WLE", "TYPE", "UNITS"), 
+            c("EVENT_MAN", "WLE_MAN", "TYPE_MAN", "UNITS_MAN"))
+        setnames(TRANS_DATA, c("EVENT", "WLE", "TYPE", "UNITS"), 
+            c("EVENT_TRANS", "WLE_TRANS", "TYPE_TRANS", "UNITS_TRANS"))
+        setkeyv(MAN_DATA, c("NAME", "EVENT_MAN"))
+        setkeyv(TRANS_DATA, c("NAME", "EVENT_TRANS"))
+        setkeyv(WL, c("NAME", "EVENT"))
+        WLS <- MAN_DATA[WL]
+        if (WLDUPE == "MAN") {
+            if (nrow(TRANS_DATA) > 0) {
+                WLS <- TRANS_DATA[WLS]
+                WLS$WLE <- ifelse(is.na(WLS$WLE_MAN), WLS$WLE_TRANS, 
+                  WLS$WLE_MAN)
+                WLS$TYPE <- ifelse(is.na(WLS$TYPE_MAN), "TRANS", 
+                  "MAN")
+                WLS$UNITS <- ifelse(is.na(WLS$UNITS_MAN), WLS$UNITS_TRANS, 
+                  WLS$UNITS_MAN)
+                WLS <- subset(WLS, select = c("NAME", "EVENT_TRANS", 
+                  "WLE", "TYPE", "UNITS"))
+                setnames(WLS, "EVENT_TRANS", "EVENT")
+            }
+            else {
+                WLS <- subset(WLS, select = c("NAME", "EVENT_MAN", 
+                  "WLE_MAN", "TYPE_MAN", "UNITS_MAN"))
+                setnames(WLS, c("EVENT_MAN", "WLE_MAN", "TYPE_MAN", 
+                  "UNITS_MAN"), c("EVENT", "WLE", "TYPE", "UNITS"))
+            }
+        }
+        else if (WLDUPE == "TRANS") {
+            if (nrow(TRANS_DATA) > 0) {
+                WLS <- TRANS_DATA[WLS]
+                WLS$WLE <- ifelse(is.na(WLS$WLE_TRANS), WLS$WLE_MAN, 
+                  WLS$WLE_TRANS)
+                WLS$TYPE <- ifelse(is.na(WLS$WLE_TRANS), "MAN", 
+                  "TRANS")
+                WLS$UNITS <- ifelse(is.na(WLS$UNITS_TRANS), WLS$UNITS_MAN, 
+                  WLS$UNITS_TRANS)
+                WLS <- subset(WLS, select = c("NAME", "EVENT_TRANS", 
+                  "WLE", "TYPE", "UNITS"))
+                setnames(WLS, "EVENT_TRANS", "EVENT")
+            }
+            else {
+                WLS <- subset(WLS, select = c("NAME", "EVENT_MAN", 
+                  "WLE_MAN", "TYPE_MAN", "UNITS_MAN"))
+                setnames(WLS, c("EVENT_MAN", "WLE_MAN", "TYPE_MAN", 
+                  "UNITS_MAN"), c("EVENT", "WLE", "TYPE", "UNITS"))
+            }
+        }
+        X <- WLS
+    }
+    return(X)
+}

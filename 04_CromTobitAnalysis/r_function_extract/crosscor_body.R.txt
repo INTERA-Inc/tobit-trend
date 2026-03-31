@@ -1,0 +1,19 @@
+{
+    lag <- round(lag)
+    x.lag <- x1 - lag
+    x <- intersect(x2, x.lag)
+    i1 <- sapply(x + lag, function(u) which.max(u == x1))
+    i2 <- sapply(x, function(u) which.max(u == x2))
+    x1 <- x1[i1]
+    y1 <- y1[i1]
+    x2 <- x2[i2]
+    y2 <- y2[i2]
+    r1 <- residuals(loess(y1 ~ x1))
+    r2 <- residuals(loess(y2 ~ x2))
+    Xts <- ts.intersect(as.ts(r1), as.ts(r2))
+    colnames(Xts) <- c(deparse(substitute(r1))[1L], deparse(substitute(r2))[1L])
+    acf.out <- acf(Xts, lag.max = 0, plot = FALSE, type = "correlation", 
+        na.action = na.fail)
+    y <- c(rev(acf.out$acf[-1, 2, 1]), acf.out$acf[, 1, 2])
+    ccf <- data.table(acf = y, lag = lag)
+}

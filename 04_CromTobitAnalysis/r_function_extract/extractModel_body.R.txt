@@ -1,0 +1,82 @@
+{
+    MODEL <- match.arg(MODEL)
+    NM <- unique(x$NAME)
+    x <- subset(x, !is.na(x[[DEP]]))
+    if (length(INDEP) == 2) {
+        if (all(is.na(y[[1]][[1]]))) {
+            MODEL <- new("CovariateModel", MODEL = MODEL, NAME = NM, 
+                LAG = LAG, SUM = matrix(), vcov = matrix(), AIC = data.table(), 
+                BIC = data.table(), df = numeric(), RES = numeric(), 
+                PRED = numeric(), p_trend = numeric())
+        }
+        else {
+            D <- 2 * (as.numeric(logLik(y$CEN)) - as.numeric(logLik(y$CEN_0)))
+            df <- 3 - 1
+            p <- 1 - pchisq(D, df)
+            AIC_dt <- data.table(Formula = c(paste(y$CEN$terms[[3]][[2]], 
+                y$CEN$terms[[3]][[1]], y$CEN$terms[[3]][[3]]), 
+                "0", paste(y$CEN_2$terms[[3]]), paste(y$CEN_3$terms[[3]])), 
+                AIC = c(2 * (length(y$CEN$coefficients) - 1) - 
+                  2 * as.numeric(logLik(y$CEN)), 2 * (length(y$CEN_0$coefficients)) - 
+                  2 * as.numeric(logLik(y$CEN_0)), 2 * (length(y$CEN_2$coefficients) - 
+                  1) - 2 * as.numeric(logLik(y$CEN_2)), 2 * (length(y$CEN_3$coefficients) - 
+                  1) - 2 * as.numeric(logLik(y$CEN_3))))
+            AIC_dt$RL <- exp((min(AIC_dt$AIC) - AIC_dt$AIC)/2)
+            BIC_dt <- data.table(Formula = c(paste(y$CEN$terms[[3]][[2]], 
+                y$CEN$terms[[3]][[1]], y$CEN$terms[[3]][[3]]), 
+                "0", paste(y$CEN_2$terms[[3]]), paste(y$CEN_3$terms[[3]])), 
+                BIC = c(log(nrow(x)) * (length(y$CEN$coefficients) - 
+                  1) - 2 * as.numeric(logLik(y$CEN)), log(nrow(x)) * 
+                  (length(y$CEN_0$coefficients)) - 2 * as.numeric(logLik(y$CEN_0)), 
+                  log(nrow(x)) * (length(y$CEN_2$coefficients) - 
+                    1) - 2 * as.numeric(logLik(y$CEN_2)), log(nrow(x)) * 
+                    (length(y$CEN_3$coefficients) - 1) - 2 * 
+                    as.numeric(logLik(y$CEN_3))))
+            if (MODEL == "Tobit") {
+                SUM <- summary(y[[1]])$estimate
+            }
+            else {
+                SUM <- summary(y[[1]])$coefficients
+            }
+            MODEL <- new("CovariateModel", MODEL = MODEL, NAME = NM, 
+                LAG = LAG, SUM = SUM, vcov = vcov(y[[1]])[1:3, 
+                  1:3], AIC = AIC_dt, BIC = BIC_dt, df = y[[1]]$df.residual, 
+                RES = y[[1]]$residuals, PRED = y[[1]]$fitted.values, 
+                p_trend = p)
+        }
+    }
+    else if (length(INDEP) == 1) {
+        if (all(is.na(y[[1]][[1]]))) {
+            MODEL <- new("CovariateModel", MODEL = MODEL, NAME = NM, 
+                LAG = LAG, SUM = matrix(), vcov = matrix(), AIC = data.table(), 
+                BIC = data.table(), df = numeric(), RES = numeric(), 
+                PRED = numeric(), p_trend = numeric())
+        }
+        else {
+            D <- 2 * (as.numeric(logLik(y$CEN)) - as.numeric(logLik(y$CEN_0)))
+            df <- 2 - 1
+            p <- 1 - pchisq(D, df)
+            AIC_dt <- data.table(Formula = c(paste(y$CEN$terms[[3]]), 
+                "0"), AIC = c(2 * (length(y$CEN$coefficients) - 
+                1) - 2 * as.numeric(logLik(y$CEN)), 2 * (length(y$CEN_0$coefficients)) - 
+                2 * as.numeric(logLik(y$CEN_0))))
+            AIC_dt$RL <- exp((min(AIC_dt$AIC) - AIC_dt$AIC)/2)
+            BIC_dt <- data.table(Formula = c(paste(y$CEN$terms[[3]]), 
+                "0"), BIC = c(log(nrow(x)) * (length(y$CEN$coefficients) - 
+                1) - 2 * as.numeric(logLik(y$CEN)), log(nrow(x)) * 
+                (length(y$CEN_0$coefficients)) - 2 * as.numeric(logLik(y$CEN_0))))
+            if (MODEL == "Tobit") {
+                SUM <- summary(y[[1]])$estimate
+            }
+            else {
+                SUM <- summary(y[[1]])$coefficients
+            }
+            MODEL <- new("CovariateModel", MODEL = MODEL, NAME = NM, 
+                LAG = LAG, SUM = SUM, vcov = vcov(y[[1]])[1:2, 
+                  1:2], AIC = AIC_dt, BIC = BIC_dt, df = y[[1]]$df.residual, 
+                RES = y[[1]]$residuals, PRED = y[[1]]$fitted.values, 
+                p_trend = p)
+        }
+    }
+    return(MODEL)
+}
