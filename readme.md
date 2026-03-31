@@ -2,8 +2,8 @@
 Script 04 is the core trend-analysis step in the workflow
 - preproccesess chemistry and water-level data
 - assign trend periods (TERM) using cutoffs, special rules/overrides
-- model on: time only or time + river stage (with lag)
-A result may be:
+- model on: time only or time + river stage (with lag) <br>
+A result may be: <br>
 - a single trend summary object, or
 - a list of trend summary objects when multiple TERM periods exist
 
