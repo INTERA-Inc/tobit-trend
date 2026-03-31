@@ -8,8 +8,8 @@ A result may be:
 - a list of trend summary objects when multiple TERM periods exist
 
 # Script 05 plotting summary - see folder (05_ReportFigures)
-Note: all R code functions/helpers used in <mark>05_ReportFigures.R</mark> saved in <mark>./r_function_extract</mark> 
-Script 05 is the reporting layer for the Tobit workflow.
+Note: all R code functions/helpers used in <mark>05_ReportFigures.R</mark> saved in <mark>./r_function_extract</mark><br>
+Script 05 is the reporting layer for the Tobit workflow.<br>
 Uses trend-analysis data from Script 04, water-level trend data, well metadata, and GIS base data, then produces:
 - one PDF report per OU
 - one page per well with summary table, map and plots
@@ -51,19 +51,12 @@ Uses the same upper layout:
 
 The bottom plot area is replaced with a simple **No Regression Analysis Performed** message.
 
-## Plot content rules
+## Notes
 - Chromium observations are plotted on a log scale
 - Non-detects are highlighted separately (red triangle)
 - Each trend TERM is shown with its own colour / symbol styling
 - If water-level data exist, the top panel also shows the screened interval
 - River stage is omitted for wells listed in `NoRS`
+- Script 05 creates a report summary table for each well using `tblSummary(...)`
 
-## Summary table
-Script 05 creates a report summary table for each well using `tblSummary(...)
-
-## Recommended Python port strategy
-- First collat per-well outputs into pandas dataframe / dict
-- Create summary-table and overview map
-- Then port plotting as reusable matplotlib functions
-- Build two page templates: full report page and placeholder page
 
