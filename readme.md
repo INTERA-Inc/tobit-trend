@@ -1,4 +1,4 @@
-# Script 04 plotting summary - see folder (04_CromTobitAnalysis)
+# Script 04 tobit analysis - see folder (04_CromTobitAnalysis)
 Script 04 is the core trend-analysis step in the workflow
 - preproccesess chemistry and water-level data
 - assign trend periods (TERM) using cutoffs, special rules/overrides
