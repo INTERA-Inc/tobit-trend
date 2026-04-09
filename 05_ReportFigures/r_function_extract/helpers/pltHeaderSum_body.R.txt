@@ -1,0 +1,6 @@
+structure(function (X, WL = NULL, p = 0.05) 
+standardGeneric("pltHeaderSum"), generic = structure("pltHeaderSum", package = "sspaHanfordTrends"), package = "sspaHanfordTrends", group = list(), valueClass = character(0), signature = c("X", 
+"WL", "p"), default = `\001NULL\001`, skeleton = (function (X, 
+    WL = NULL, p = 0.05) 
+stop("invalid call in method dispatch to 'pltHeaderSum' (no default method)", 
+    domain = NA))(X, WL, p), class = structure("standardGeneric", package = "methods"))

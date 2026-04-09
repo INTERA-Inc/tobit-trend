@@ -1,0 +1,4 @@
+structure(function (X) 
+standardGeneric("pltHeader"), generic = structure("pltHeader", package = "sspaHanfordTrends"), package = "sspaHanfordTrends", group = list(), valueClass = character(0), signature = "X", default = `\001NULL\001`, skeleton = (function (X) 
+stop("invalid call in method dispatch to 'pltHeader' (no default method)", 
+    domain = NA))(X), class = structure("standardGeneric", package = "methods"))
