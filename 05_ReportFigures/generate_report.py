@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import ScalarFormatter, LogLocator, LogFormatterSciNotation
+from matplotlib.ticker import ScalarFormatter, LogLocator, LogFormatterSciNotation, FuncFormatter
 import matplotlib.dates as mdates
 from matplotlib.backends.backend_pdf import PdfPages
 import pyreadr
@@ -47,6 +47,7 @@ colline = col
 pch = [21, 21, 21, 21, 21]
 bg = ['rgb(46,139,87,100)', 'rgb(117,107,177,100)', 'rgb(77,77,77,100)', 'rgb(255,165,0,100)', 'rgb(0,0,205,100)']
 OUs = ['100-HR-3-D', '100-HR-3-H', '100-KR-4']
+all_ou_wells = ifile_well_info_data[ifile_well_info_data['OU'].isin(OUs)][['NAME', 'OU']]
 
 for ou in OUs[0:1]:  # Process only the first OU
     area = ifile_well_info_data[ifile_well_info_data['OU'] == ou][['NAME', 'OU']]
@@ -58,16 +59,19 @@ for ou in OUs[0:1]:  # Process only the first OU
     ifile_gis_roads = gpd.read_file('input/gis_export/ROADS.shp')
     ifile_gis_wells = gpd.read_file('input/gis_export/WELLS.shp')
 
+    ifile_gis_wells_by_ou = ifile_gis_wells[ifile_gis_wells['FEAT_NAME'].isin(all_ou_wells['NAME'])]
+    print(ifile_gis_wells_by_ou)
+
     ifile_gis_roads = ifile_gis_roads.to_crs(ifile_gis_highriv.crs)
-    ifile_gis_wells = ifile_gis_wells.to_crs(ifile_gis_highriv.crs)
+    ifile_gis_wells = ifile_gis_wells_by_ou.to_crs(ifile_gis_highriv.crs)
     row = ifile_gis_wells.iloc[0]
     print("GIS well row\n", row, "\n")
 
-    # ax = ifile_gis_roads.plot(color='#E5E5E5', linewidth=2, markersize=50, zorder=1)
-    # ifile_gis_highriv.plot(ax=ax, color='#E5E5E5', edgecolor='black', linewidth=2.5, figsize=(10, 10), zorder=2)
-    # ifile_gis_wells.plot(ax=ax, color='#B3B3B3', edgecolor='#7F7F7F', linewidth=2, figsize=(10, 10), zorder=3)
+    ax = ifile_gis_roads.plot(color='#E5E5E5', linewidth=2, markersize=50, zorder=1)
+    ifile_gis_highriv.plot(ax=ax, color='#E5E5E5', edgecolor='black', linewidth=2.5, figsize=(10, 10), zorder=2)
+    ifile_gis_wells.plot(ax=ax, color='#B3B3B3', edgecolor='#7F7F7F', linewidth=2, figsize=(10, 10), zorder=3)
 
-    # plt.show()
+    plt.show()
 
     num_wells = len(wells)
 
@@ -82,8 +86,8 @@ for ou in OUs[0:1]:  # Process only the first OU
         print(f"Processing well {wells.iloc[i, 0]} in {ou}\n")
 
         fig, ax1 = plt.subplots(figsize=(15, 3))
-        # ax1.set_facecolor('#E5E5E5')
-        # ax1.patch.set_alpha(0.5)
+        # # ax1.set_facecolor('#E5E5E5')
+        # # ax1.patch.set_alpha(0.5)
         ax1.set_yscale('log')
         cr_min = cr_concentrations_clean.min(skipna=True)
         cr_max = cr_concentrations_clean.max(skipna=True)
@@ -93,19 +97,19 @@ for ou in OUs[0:1]:  # Process only the first OU
         print("ticks: ", ticks, "\n")
         ax1.set_ylabel('Hex. & Filt. Cr (µg/L)')
         ax1.set_yticks(ticks)
-        # ax1.set_yticklabels([f"{t:.0e}" for t in ticks])
+        ax1.set_yticklabels([f"{t:.0e}" for t in ticks])
         ax1.xaxis.set_major_locator(mdates.YearLocator())
         ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         ax1.yaxis.set_major_locator(LogLocator(base=10.0))
         ax1.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
         ax1.yaxis.set_major_formatter(LogFormatterSciNotation(base=10.0))
-        ax1.yaxis.set_minor_formatter(plt.NullFormatter())
+        # ax1.yaxis.set_minor_formatter(plt.NullFormatter())
         ax1.tick_params(axis='y', which='both', labelleft=True, left=True)
-        # ax1.yaxis.set_ticks_position('left')
+        # # ax1.yaxis.set_ticks_position('left')
         ax1.grid(True, which='major', axis='y', linewidth=2, color='#838B8B')
-        # ax1.grid(True, which='major', axis='x', linewidth=2, color='#FFFFFF')
-        # ax1.grid(True, which='major', axis='y', linewidth=2, color='#000000')
-        # ax1.grid(True, which='minor', axis='y', linewidth=2, color='#FFFFFF')
+        # # ax1.grid(True, which='major', axis='x', linewidth=2, color='#FFFFFF')
+        # # ax1.grid(True, which='major', axis='y', linewidth=2, color='#000000')
+        # # ax1.grid(True, which='minor', axis='y', linewidth=2, color='#FFFFFF')
         ax1.plot(
             cr_trends_dates_clean, 
             cr_concentrations_clean, 
@@ -123,6 +127,10 @@ for ou in OUs[0:1]:  # Process only the first OU
         ax2.plot(cr_trends_dates, cr_river_stages, color='#97C4EF')
         ax2.set_ylabel('River Stage (m amsl)')
 
+        ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: '{:.0e}'.format(x)))
+        ax1.set_yticklabels(['$10^{'+str(int(np.log10(y)))+'}$' for y in ax1.get_yticks()])
+
+        # fig.tight_layout()
         plt.show()
 
     # fn = f"output/TobitRegression_WLlag - {ou}_CY2024_v3_032525_2.pdf"
