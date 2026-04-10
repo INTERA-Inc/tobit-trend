@@ -2,7 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import ScalarFormatter, LogLocator, LogFormatterSciNotation, FuncFormatter
+from matplotlib.ticker import FormatStrFormatter, LogLocator, LogFormatterSciNotation, FuncFormatter, MultipleLocator, NullFormatter
 import matplotlib.dates as mdates
 from matplotlib.backends.backend_pdf import PdfPages
 import pyreadr
@@ -27,6 +27,9 @@ print("Cr Trends Parquet\n", cr_trends_parquet[cr_trends_parquet['VAL'].notna()]
 
 wl_rs_parquet = pd.read_parquet('input/WL_RS.parquet')
 print("WL RS Parquet\n", wl_rs_parquet.head(), "\n")
+
+prepped_chem_rs_parquet = pd.read_parquet('input/R_prepped_chem_rs.parquet')
+print("Prepped Chem RS Parquet\n", prepped_chem_rs_parquet[prepped_chem_rs_parquet['VAL'].notna()], "\n")
 
 coords = ifile_well_info_data[['NAME', 'XCOORDS', 'YCOORDS', 'ZCOORDS']]
 print("Coordinates\n", coords.head(), "\n")
@@ -76,6 +79,40 @@ for ou in OUs[0:1]:  # Process only the first OU
     num_wells = len(wells)
 
     for i in range(num_wells):
+        wl_trends_well = wl_rs_parquet[wl_rs_parquet['NAME'] == wells.iloc[i, 0]]
+        print(f"WL trends for well {wells.iloc[i, 0]} in {ou}\n", wl_trends_well.head(), "\n")
+        wl_elevations = wl_trends_well['WLE']
+        wl_river_stages = wl_trends_well['INTERP']
+        wl_trends_dates = pd.to_datetime(wl_trends_well['EVENT'])
+
+        wl_elevations_clean = wl_elevations[~np.isnan(wl_elevations)]
+        wl_trends_dates_clean = wl_trends_dates[~np.isnan(wl_elevations)]
+
+        wl_rs_fig, wl_elevation_axis = plt.subplots(figsize=(15, 3))
+        wl_elevation_axis.set_ylim(wl_elevations.min(skipna=True) - 2, wl_elevations.max(skipna=True) + 2)
+        wl_elevation_axis.yaxis.set_major_locator(MultipleLocator(1))
+        wl_elevation_axis.set_ylabel('Water-Level (m amsl)')
+        wl_elevation_axis.plot(
+            wl_trends_dates_clean, 
+            wl_elevations_clean, 
+            marker='o', 
+            linewidth=1, 
+            linestyle='-', 
+            color='#050607', 
+            markerfacecolor='#FFFFFF', 
+            markeredgewidth=2, 
+            markeredgecolor='#050607'
+        )
+
+        wl_river_stage_axis = wl_elevation_axis.twinx()
+        wl_river_stage_axis.set_ylim(wl_river_stages.min(skipna=True) - 2, wl_river_stages.max(skipna=True) + 2)
+        wl_river_stage_axis.yaxis.set_major_locator(MultipleLocator(2))
+        wl_river_stage_axis.set_ylabel('River Stage (m amsl)')
+        wl_river_stage_axis.plot(wl_trends_dates, wl_river_stages, color='#97C4EF')
+        wl_river_stage_axis.margins(y=0)
+
+        plt.show()
+
         cr_trends_well = cr_trends_parquet[cr_trends_parquet['NAME'] == wells.iloc[i, 0]]
         print(f"Cr trends for well {wells.iloc[i, 0]} in {ou}\n", cr_trends_well.head(), "\n")
         cr_trends_dates = pd.to_datetime(cr_trends_well['EVENT'])
@@ -85,32 +122,26 @@ for ou in OUs[0:1]:  # Process only the first OU
         cr_river_stages = cr_trends_well['INTERP']
         print(f"Processing well {wells.iloc[i, 0]} in {ou}\n")
 
-        fig, ax1 = plt.subplots(figsize=(15, 3))
-        # # ax1.set_facecolor('#E5E5E5')
-        # # ax1.patch.set_alpha(0.5)
-        ax1.set_yscale('log')
+        cr_rs_fig, cr_concentrations_axis = plt.subplots(figsize=(15, 3))
+        cr_concentrations_axis.set_facecolor('#E5E5E5')
+        cr_concentrations_axis.patch.set_alpha(0.5)
         cr_min = cr_concentrations_clean.min(skipna=True)
         cr_max = cr_concentrations_clean.max(skipna=True)
-        log_cr_min = np.floor(np.log10(cr_min))
-        log_cr_max = np.ceil(np.log10(cr_max))
-        ticks = np.logspace(log_cr_min, log_cr_max, num=int(log_cr_max - log_cr_min) + 1)
-        print("ticks: ", ticks, "\n")
-        ax1.set_ylabel('Hex. & Filt. Cr (µg/L)')
-        ax1.set_yticks(ticks)
-        ax1.set_yticklabels([f"{t:.0e}" for t in ticks])
-        ax1.xaxis.set_major_locator(mdates.YearLocator())
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-        ax1.yaxis.set_major_locator(LogLocator(base=10.0))
-        ax1.yaxis.set_minor_locator(LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1))
-        ax1.yaxis.set_major_formatter(LogFormatterSciNotation(base=10.0))
-        # ax1.yaxis.set_minor_formatter(plt.NullFormatter())
-        ax1.tick_params(axis='y', which='both', labelleft=True, left=True)
-        # # ax1.yaxis.set_ticks_position('left')
-        ax1.grid(True, which='major', axis='y', linewidth=2, color='#838B8B')
-        # # ax1.grid(True, which='major', axis='x', linewidth=2, color='#FFFFFF')
-        # # ax1.grid(True, which='major', axis='y', linewidth=2, color='#000000')
-        # # ax1.grid(True, which='minor', axis='y', linewidth=2, color='#FFFFFF')
-        ax1.plot(
+        
+        cr_concentrations_axis.set_yscale('log')
+        cr_concentrations_axis.yaxis.set_major_locator(LogLocator(base=10))
+        cr_concentrations_axis.yaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+        cr_concentrations_axis.yaxis.set_minor_formatter(NullFormatter())
+        ymin = 10 ** np.floor(np.log10(cr_min))
+        ymax = 10 **np.ceil(np.log10(cr_max))
+        cr_concentrations_axis.set_ylim(ymin - 1, ymax + 1)
+        cr_concentrations_axis.set_ylabel('Hex. & Filt. Cr (µg/L)')
+
+        cr_concentrations_axis.grid(True, which='major', axis='x', linewidth=2, color='#FFFFFF')
+        cr_concentrations_axis.grid(True, which='major', axis='y', linewidth=2, color='#000000')
+        cr_concentrations_axis.grid(True, which='minor', axis='y', linewidth=2, color='#FFFFFF')
+        
+        cr_concentrations_axis.plot(
             cr_trends_dates_clean, 
             cr_concentrations_clean, 
             marker='o', 
@@ -123,12 +154,15 @@ for ou in OUs[0:1]:  # Process only the first OU
             zorder=3
         )
 
-        ax2 = ax1.twinx()
-        ax2.plot(cr_trends_dates, cr_river_stages, color='#97C4EF')
-        ax2.set_ylabel('River Stage (m amsl)')
+        cr_river_stage_axis = cr_concentrations_axis.twinx()
+        cr_river_stage_axis.set_ylabel('River Stage (m amsl)')
+        min_stage = 2 * np.floor((cr_river_stages.min(skipna=True) - 1) / 2) + 1
+        max_stage = 2 * np.ceil((cr_river_stages.max(skipna=True) - 1) / 2) + 1
+        ticks = np.arange(min_stage, max_stage + 2, 2)
 
-        ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: '{:.0e}'.format(x)))
-        ax1.set_yticklabels(['$10^{'+str(int(np.log10(y)))+'}$' for y in ax1.get_yticks()])
+        cr_river_stage_axis.set_yticks(ticks)
+        cr_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
+        cr_river_stage_axis.plot(cr_trends_dates, cr_river_stages, color='#97C4EF')
 
         # fig.tight_layout()
         plt.show()
