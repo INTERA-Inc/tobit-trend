@@ -1,0 +1,50 @@
+[project]
+name = "Tobit Trend Analysis"
+version = "0.1.0"
+
+[paths]
+cr_trend_parquet = "input/Cr_TrendData/Cr_TrendData.parquet"
+wl_trends_flat_csv = "input/WLTrends_flat.csv"
+wl_data_parquet = "input/WL_TrendData_2024/WL_RS.parquet"
+system_wells_csv = "input/SystemWells.csv"
+trend_breaks_csv = "input/TrendBreaks_v051824.csv"
+no_rs_csv = "input/NoRS.csv"
+kw_csv = "input/KW_selected_locations.csv"
+rum_csv = "input/list_RUM2_wells_and_beyond_v4_021225.csv"
+
+output_csv = "output/trend_summary.csv"
+
+r_script_path = "src/tools/crosscor_r_bridge.R"
+
+[data_rules]
+PRIOR_YEAR = 2023
+
+[CUTOFFS]
+DX = "2011-01-01"
+HX = "2011-11-01"
+KX_KW_KR4 = "2009-04-01"
+
+[KW_DATES]
+date1 = "2016-05-16"
+date2 = "2017-04-12"
+
+[model]
+dep = "VAL" # dependent variable
+indep = ["INTERP", "EVENT"] 
+log = "log"
+maxlag = 90
+n_min = 7
+pnd_max = 0.5
+mindate = "1994-01-01"
+
+[run]
+save_csv = true
+save_plots = true
+save_diagnostics = true
+compare_to_r = true
+
+[exports]
+trend_summary_csv = "output/trend_summary.csv"
+comparison_csv = "output/python_vs_r_comparison.csv"
+plot_dir = "output/plots"
+diagnostics_dir = "output/diagnostics"

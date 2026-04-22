@@ -1,0 +1,5 @@
+KEY,WELL,ITER,CLASS,MODEL,FORM_raw,FORM_label,LOG,LAG,p_trend,df,AIC,BIC,RL,AIC_EVENT,AIC_INTERP,AIC_NULL,BIC_EVENT,BIC_INTERP,BIC_NULL,logLik,n_obs,n_cens,beta_intercept,beta_interp,beta_event,beta_logSigma,p_interp,p_event,SUM_rows,SUM_cols,model_type,fit_ok
+17-D__ITER1,17-D,1,Trend_Summary,Tobit,log(VAL)~INTERP+EVENT,INTERP + EVENT,log,,,,,,,,,,,,,,,,,,,,,,1,1,SUM_ROWS_1,False
+17-D__ITER2,17-D,2,Trend_Summary,Tobit,log(VAL)~INTERP+EVENT,INTERP + EVENT,log,,,,,,,,,,,,,,,,,,,,,,1,1,SUM_ROWS_1,False
+17-D__ITER3,17-D,3,Trend_Summary,Tobit,log(VAL)~INTERP+EVENT,INTERP + EVENT,log,,,,,,,,,,,,,,,,,,,,,,1,1,SUM_ROWS_1,False
+18-S__ITER1,18-S,1,Trend_Summary,Tobit,log(VAL)~INTERP+EVENT,INTERP + EVENT,log,,,,,,,,,,,,,,,,,,,,,,1,1,SUM_ROWS_1,False
