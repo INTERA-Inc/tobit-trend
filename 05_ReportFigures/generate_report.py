@@ -23,7 +23,7 @@ print("WL Trends\n", wl_trends.head(), "\n")
 wl_rs_parquet = pd.read_parquet('input/WL_RS.parquet')
 print("WL RS Parquet\n", wl_rs_parquet.head(), "\n")
 
-prepped_chem_rs_parquet = pd.read_parquet('input/Cr_TrendData.parquet')
+prepped_chem_rs_parquet = pd.read_parquet('input/R_prepped_chem_rs.parquet')
 print("Prepped Chem RS Parquet\n", prepped_chem_rs_parquet[prepped_chem_rs_parquet['VAL'].notna()], "\n")
 
 ifile_gis_highriv = gpd.read_file('input/gis_export/HIGHRIV.shp')
@@ -31,10 +31,11 @@ ifile_gis_roads = gpd.read_file('input/gis_export/ROADS.shp')
 ifile_gis_ous = gpd.read_file('input/gis_export/OU.shp')
 ifile_gis_wells = gpd.GeoDataFrame(ifile_wells, geometry=gpd.points_from_xy(ifile_wells['XCOORDS'], ifile_wells['YCOORDS']), crs='EPSG:2926')
 
-CUTOFF = pd.DataFrame({
-    'SYSTEM': ['DX', 'HX', 'KX_KW_KR4'],
-    'EVENT': pd.to_datetime(['2011-01-01', '2011-11-01', '2009-04-01'])
-})
+# Not sure what to use this for quite yet
+# CUTOFF = pd.DataFrame({
+#     'SYSTEM': ['DX', 'HX', 'KX_KW_KR4'],
+#     'EVENT': pd.to_datetime(['2011-01-01', '2011-11-01', '2009-04-01'])
+# })
 
 OUs = ['100-HR-3-D', '100-HR-3-H', '100-KR-4']
 
@@ -62,14 +63,10 @@ for ou in OUs:
         for i in range(num_wells):
             well = wells_ou.iloc[i, 0]
             gis_well = ifile_gis_wells[ifile_gis_wells['NAME'] == well]
-            print(f"GIS well for {well} in {ou}\n", gis_well, "\n")
             wl_trends_well = wl_rs_parquet[wl_rs_parquet['NAME'] == well]
-            print(f"WL trends for well {well} in {ou}\n", wl_trends_well.head(), "\n")
             cr_trends_well = prepped_chem_rs_parquet[prepped_chem_rs_parquet['NAME'] == well]
-            print(f"Cr trends for well {well} in {ou}\n", cr_trends_well.head(), "\n")
 
             gis_ou = ifile_gis_ous[ifile_gis_ous['Name'] == ou]
-            print("GIS OU HEAD\n", gis_ou.head(), "\n")
 
             gis_ou = gis_ou.to_crs(ifile_gis_highriv.crs)
 
@@ -207,18 +204,24 @@ Number of Trends Calculated: {len(well_cr_trends)}
             wl_river_stage_axis.set_ylabel('River Stage (m amsl)')
             wl_river_stage_plot_lines = wl_river_stage_axis.plot(wl_trends_dates, wl_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
 
-            cr_trends_dates = pd.to_datetime(cr_trends_well['EVENT'])
+            cr_trends_well_clean = cr_trends_well.loc[cr_trends_well['NDS'].notna()]
             cr_concentrations = cr_trends_well['VAL']
-            cr_trends_dates_clean = cr_trends_dates[~np.isnan(cr_concentrations)]
             cr_concentrations_clean = cr_concentrations[~np.isnan(cr_concentrations)]
+            cr_concentrations_detects = cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == False, 'VAL']
+            cr_concentrations_NDS = cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == True, 'VAL']
+            cr_trends_dates = pd.to_datetime(cr_trends_well['EVENT'])
+            cr_trends_dates_clean = cr_trends_dates[~np.isnan(cr_concentrations)]
+            cr_trends_dates_detects = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == False, 'EVENT'])
+            cr_trends_dates_NDS = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == True, 'EVENT'])
             cr_river_stages = cr_trends_well['INTERP']
+            
+            print(f"CR TRENDS WELL CLEAN\n{cr_trends_well_clean}\n")
             print(f"Processing well {wells_ou.iloc[i, 0]} in {ou}\n")
-            print("CR CONCENTRATIONS CLEAN\n", cr_concentrations_clean, "\n")
-
+            
             cr_concentrations_axis = page_fig.add_subplot(grid_spec[3, :])
             cr_concentrations_axis.set_facecolor('#E5E5E5')
-            cr_min = cr_concentrations_clean.min(skipna=True)
-            cr_max = cr_concentrations_clean.max(skipna=True)
+            cr_min = cr_concentrations.min(skipna=True)
+            cr_max = cr_concentrations.max(skipna=True)
             
             cr_concentrations_axis.xaxis.set_major_locator(YearLocator())
             cr_concentrations_axis.xaxis.set_major_formatter(DateFormatter('%Y'))
@@ -230,9 +233,6 @@ Number of Trends Calculated: {len(well_cr_trends)}
             cr_concentrations_axis.yaxis.set_minor_formatter(NullFormatter())
             ymin = 10 ** np.floor(np.log10(cr_min))
             ymax = 10 **np.ceil(np.log10(cr_max))
-            print("clean size:", len(cr_concentrations_clean))
-            print("min:", cr_min)
-            print("max:", cr_max)
             cr_concentrations_axis.set_ylim(ymin - 0.1, ymax + 1)
             cr_concentrations_axis.set_ylabel('Hex. & Filt. Cr (µg/L)')
 
@@ -243,16 +243,33 @@ Number of Trends Calculated: {len(well_cr_trends)}
             cr_concentrations_plot_lines = cr_concentrations_axis.plot(
                 cr_trends_dates_clean, 
                 cr_concentrations_clean, 
-                marker='o', 
-                linestyle='-', 
-                linewidth=1, 
+                linewidth=1,
                 color='#2E8B57', 
-                markersize=4,
-                markerfacecolor='#9DC2AD', 
-                markeredgewidth=0.75,
-                markeredgecolor='#2E8B57',
-                label='Observed Concentration'
             )
+            if not cr_concentrations_detects.empty:
+                cr_concentrations_axis.plot(
+                    cr_trends_dates_detects, 
+                    cr_concentrations_detects, 
+                    marker='o', 
+                    linewidth=0, 
+                    markersize=4,
+                    markerfacecolor='#9DC2AD', 
+                    markeredgewidth=0.75,
+                    markeredgecolor='#2E8B57',
+                    label='Observed Concentration'
+                )
+            if not cr_concentrations_NDS.empty:
+                cr_concentrations_axis.plot(
+                    cr_trends_dates_NDS, 
+                    cr_concentrations_NDS, 
+                    marker='v', 
+                    linewidth=0, 
+                    markersize=4,
+                    markerfacecolor='#D19999', 
+                    markeredgewidth=0.75,
+                    markeredgecolor='#B12224',
+                    label='Non-Detect'
+                )
 
             cr_river_stage_axis = cr_concentrations_axis.twinx()
             cr_river_stage_axis.set_ylabel('River Stage (m amsl)')
@@ -294,15 +311,31 @@ Number of Trends Calculated: {len(well_cr_trends)}
             cr_concentrations_axis2.plot(
                 cr_trends_dates_clean, 
                 cr_concentrations_clean, 
-                marker='o', 
-                linestyle='-', 
                 linewidth=1, 
                 color='#2E8B57', 
-                markersize=4,
-                markerfacecolor='#9DC2AD', 
-                markeredgewidth=0.75,
-                markeredgecolor='#2E8B57',
             )
+            if not cr_concentrations_detects.empty:
+                cr_concentrations_axis2.plot(
+                    cr_trends_dates_detects, 
+                    cr_concentrations_detects, 
+                    marker='o', 
+                    linewidth=0, 
+                    markersize=4,
+                    markerfacecolor='#9DC2AD', 
+                    markeredgewidth=0.75,
+                    markeredgecolor='#2E8B57',
+                )
+            if not cr_concentrations_NDS.empty:
+                cr_concentrations_axis2.plot(
+                    cr_trends_dates_NDS, 
+                    cr_concentrations_NDS, 
+                    marker='v', 
+                    linewidth=0, 
+                    markersize=4,
+                    markerfacecolor='#D19999', 
+                    markeredgewidth=0.75,
+                    markeredgecolor='#B12224',
+                )
             calculated_concentrations_plot_lines = cr_concentrations_axis2.plot(
                 cr_trends_dates, 
                 calculated_concentrations_trend, 
@@ -322,6 +355,13 @@ Number of Trends Calculated: {len(well_cr_trends)}
             all_handles = wl_elevation_handles + wl_river_stage_handles + cr_concentrations_handles + calculated_concentrations_handles
             all_labels = wl_elevation_labels + wl_river_stage_labels + cr_concentrations_labels + calculated_concentrations_labels
 
+            # Eventually we'll need to make a custom legend instead of grabbing all the legend info from the plots
+            # Example:
+            # legend_elements = [
+            #     Line2D([0], [0], color='green', lw=1, marker='o', label='Observed Concentration'),
+            #     Line2D([0], [0], color='red', marker='v', linestyle='None', label='Non-Detect')
+            # ]
+            # ax.legend(handles=legend_elements)
             legend_axis = page_fig.add_subplot(grid_spec[1, 3])
             legend_axis.axis('off')
             legend_axis.legend(all_handles, all_labels, loc='center', frameon=False)
