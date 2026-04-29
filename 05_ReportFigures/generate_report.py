@@ -110,7 +110,7 @@ Number of Trends Calculated: {len(well_cr_trends)}
                 if row_idx == 0:  # Lag Time
                     row_values.append(f'{round(wl_lag) if ~np.isnan(wl_lag) else 'NA'}')
                 elif row_idx == 1:  # p_trend
-                    row_values.append(f'{round(wl_p_trend, 3) if ~np.isnan(wl_p_trend) else 'NA'}')
+                    row_values.append(f'{wl_p_trend:.2g}' if ~np.isnan(wl_p_trend) else 'NA')
                 else:
                     row_values.append('')
                 
@@ -120,13 +120,13 @@ Number of Trends Calculated: {len(well_cr_trends)}
                     if row_idx == 0:  # Lag Time
                         row_values.append(f'{round(trend_row["LAG"])}' if ~np.isnan(trend_row["LAG"]) else 'NA')
                     elif row_idx == 1:  # p_trend
-                        row_values.append(f'{round(trend_row["p_trend"], 3)}' if ~np.isnan(trend_row["p_trend"]) else 'NA')
+                        row_values.append(f'{trend_row["p_trend"]:.2g}' if ~np.isnan(trend_row["p_trend"]) else 'NA')
                     elif row_idx == 2:  # p_interp
-                        row_values.append(f'{round(trend_row["p_interp"], 3)}' if ~np.isnan(trend_row["p_interp"]) else 'NA')
+                        row_values.append(f'{trend_row["p_interp"]:.2g}' if ~np.isnan(trend_row["p_interp"]) else 'NA')
                     elif row_idx == 3:  # p_event
-                        row_values.append(f'{round(trend_row["p_event"], 3)}' if ~np.isnan(trend_row["p_event"]) else 'NA')
+                        row_values.append(f'{trend_row["p_event"]:.2g}' if ~np.isnan(trend_row["p_event"]) else 'NA')
                     elif row_idx == 4:  # n_obs
-                        row_values.append(f'{round(trend_row["n_obs"], 3)}' if ~np.isnan(trend_row["n_obs"]) else 'NA')
+                        row_values.append(f'{trend_row["n_obs"]}' if ~np.isnan(trend_row["n_obs"]) else 'NA')
                     elif row_idx == 5:  # Percent NDs
                         row_values.append('')
                 
