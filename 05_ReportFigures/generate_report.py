@@ -71,7 +71,7 @@ for ou in OUs:
             gis_ou = gis_ou.to_crs(ifile_gis_highriv.crs)
 
             page_fig = plt.figure(figsize=(8.5, 11))
-            grid_spec = GridSpec(nrows=6, ncols=4, wspace=0.1, hspace=0.1)
+            grid_spec = GridSpec(nrows=6, ncols=4, wspace=0.1, hspace=0.15)
 
             page_fig.text(0.5, 0.95, f"{well}", ha='center', va='top', fontsize=20, fontstyle='italic', fontweight='light')
 
@@ -79,8 +79,9 @@ for ou in OUs:
 
             page_fig.text(
                 0.5, 
-                0.91, 
-f"""Distance to River: {round(gis_well.at[gis_well.index[0], 'DIST'])} m
+                0.925, 
+f"""
+Distance to River: {round(gis_well.at[gis_well.index[0], 'DIST'])} m
 Number of Trends Calculated: {len(well_cr_trends)}
 """,
                 ha='center',
@@ -202,17 +203,15 @@ Number of Trends Calculated: {len(well_cr_trends)}
             wl_river_stage_axis.set_yticks(ticks)
             wl_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
             wl_river_stage_axis.set_ylabel('River Stage (m amsl)')
-            wl_river_stage_plot_lines = wl_river_stage_axis.plot(wl_trends_dates, wl_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
+            wl_river_stage_axis.plot(wl_trends_dates, wl_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
 
             cr_trends_well_clean = cr_trends_well.loc[cr_trends_well['NDS'].notna()]
             cr_concentrations = cr_trends_well['VAL']
             cr_concentrations_clean = cr_concentrations[~np.isnan(cr_concentrations)]
-            cr_concentrations_detects = cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == False, 'VAL']
             cr_concentrations_NDS = cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == True, 'VAL']
-            cr_trends_dates = pd.to_datetime(cr_trends_well['EVENT'])
-            cr_trends_dates_clean = cr_trends_dates[~np.isnan(cr_concentrations)]
-            cr_trends_dates_detects = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == False, 'EVENT'])
-            cr_trends_dates_NDS = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == True, 'EVENT'])
+            cr_dates = pd.to_datetime(cr_trends_well['EVENT'])
+            cr_dates_clean = cr_dates[~np.isnan(cr_concentrations)]
+            cr_dates_NDS = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['NDS'] == True, 'EVENT'])
             cr_river_stages = cr_trends_well['INTERP']
             
             print(f"CR TRENDS WELL CLEAN\n{cr_trends_well_clean}\n")
@@ -239,37 +238,6 @@ Number of Trends Calculated: {len(well_cr_trends)}
             cr_concentrations_axis.grid(True, which='major', axis='x', linewidth=0.5, color='#FFFFFF')
             cr_concentrations_axis.grid(True, which='major', axis='y', linewidth=0.5, color='#000000')
             cr_concentrations_axis.grid(True, which='minor', axis='y', linewidth=0.5, color='#FFFFFF')
-            
-            cr_concentrations_plot_lines = cr_concentrations_axis.plot(
-                cr_trends_dates_clean, 
-                cr_concentrations_clean, 
-                linewidth=1,
-                color='#2E8B57', 
-            )
-            if not cr_concentrations_detects.empty:
-                cr_concentrations_axis.plot(
-                    cr_trends_dates_detects, 
-                    cr_concentrations_detects, 
-                    marker='o', 
-                    linewidth=0, 
-                    markersize=4,
-                    markerfacecolor='#9DC2AD', 
-                    markeredgewidth=0.75,
-                    markeredgecolor='#2E8B57',
-                    label='Observed Concentration'
-                )
-            if not cr_concentrations_NDS.empty:
-                cr_concentrations_axis.plot(
-                    cr_trends_dates_NDS, 
-                    cr_concentrations_NDS, 
-                    marker='v', 
-                    linewidth=0, 
-                    markersize=4,
-                    markerfacecolor='#D19999', 
-                    markeredgewidth=0.75,
-                    markeredgecolor='#B12224',
-                    label='Non-Detect'
-                )
 
             cr_river_stage_axis = cr_concentrations_axis.twinx()
             cr_river_stage_axis.set_ylabel('River Stage (m amsl)')
@@ -279,10 +247,9 @@ Number of Trends Calculated: {len(well_cr_trends)}
 
             cr_river_stage_axis.set_yticks(ticks)
             cr_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
-            cr_river_stage_axis.plot(cr_trends_dates, cr_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
 
-            cr_trends_dates_clean_numeric = (cr_trends_dates_clean - cr_trends_dates_clean.min()).dt.days / 365.25
-            cr_trends_dates_numeric = (cr_trends_dates - cr_trends_dates.min()).dt.days / 365.25
+            cr_trends_dates_clean_numeric = (cr_dates_clean - cr_dates_clean.min()).dt.days / 365.25
+            cr_trends_dates_numeric = (cr_dates - cr_dates.min()).dt.days / 365.25
 
             cr_concentrations_clean_log = np.log1p(cr_concentrations_clean)
             
@@ -307,27 +274,82 @@ Number of Trends Calculated: {len(well_cr_trends)}
             ymax = 10 **np.ceil(np.log10(cr_max))
             cr_concentrations_axis2.set_ylim(ymin - 0.1, ymax + 1)
             cr_concentrations_axis2.set_ylabel('Hex. & Filt. Cr (µg/L)')
+            
+            cr_concentrations_axis2.grid(True, which='major', axis='x', linewidth=0.5, color='#FFFFFF')
+            cr_concentrations_axis2.grid(True, which='major', axis='y', linewidth=0.5, color='#000000')
+            cr_concentrations_axis2.grid(True, which='minor', axis='y', linewidth=0.5, color='#FFFFFF')
 
-            cr_concentrations_axis2.plot(
-                cr_trends_dates_clean, 
-                cr_concentrations_clean, 
-                linewidth=1, 
-                color='#2E8B57', 
-            )
-            if not cr_concentrations_detects.empty:
+            marker_face_colors = ['#ADD2BD', '#C9C5E0', '#B9B9B9', '#FFDC9B', '#9B9BEB']
+            marker_edge_colors = ['#2E8B57', '#756BB1', '#4D4D4D', '#FFA500', '#0000CD']
+
+            for trend_idx in range(len(well_cr_trends)):
+                cr_concentrations_trend = cr_trends_well_clean.loc[cr_trends_well_clean['TERM'].astype(int) == trend_idx + 1, 'VAL']
+                cr_concentrations_clean_trend = cr_concentrations_trend[~np.isnan(cr_concentrations_trend)]
+                cr_concentrations_detects_trend = cr_trends_well_clean.loc[
+                    (cr_trends_well_clean['NDS'] == False) & 
+                    (cr_trends_well_clean['TERM'].astype(int) == trend_idx + 1), 'VAL'
+                ]
+                cr_dates_trend = pd.to_datetime(cr_trends_well_clean.loc[cr_trends_well_clean['TERM'].astype(int) == trend_idx + 1, 'EVENT'])
+                cr_dates_clean_trend = cr_dates_trend[~np.isnan(cr_concentrations_trend)]
+                cr_dates_detects_trend = pd.to_datetime(cr_trends_well_clean.loc[
+                    (cr_trends_well_clean['NDS'] == False) &
+                    (cr_trends_well_clean['TERM'].astype(int) == trend_idx + 1), 'EVENT'
+                ])
+
+                cr_concentrations_axis.plot(
+                    cr_dates_clean_trend, 
+                    cr_concentrations_clean_trend, 
+                    linewidth=1,
+                    color=marker_edge_colors[trend_idx],
+                )
+                
+                if not cr_concentrations_detects_trend.empty:
+                    cr_concentrations_axis.plot(
+                        cr_dates_detects_trend,
+                        cr_concentrations_detects_trend,
+                        linewidth=0,
+                        marker='o',
+                        markersize=4,
+                        markerfacecolor=marker_face_colors[trend_idx],
+                        markeredgewidth=0.75,
+                        markeredgecolor=marker_edge_colors[trend_idx],
+                        label='Observed Concentration' if trend_idx == 0 else '',
+                    )
+                
                 cr_concentrations_axis2.plot(
-                    cr_trends_dates_detects, 
-                    cr_concentrations_detects, 
-                    marker='o', 
+                    cr_dates_clean_trend, 
+                    cr_concentrations_clean_trend, 
+                    linewidth=1,
+                    color=marker_edge_colors[trend_idx],
+                )
+
+                if not cr_concentrations_detects_trend.empty:
+                    cr_concentrations_axis2.plot(
+                        cr_dates_detects_trend,
+                        cr_concentrations_detects_trend,
+                        linewidth=0,
+                        marker='o',
+                        markersize=4,
+                        markerfacecolor=marker_face_colors[trend_idx],
+                        markeredgewidth=0.75,
+                        markeredgecolor=marker_edge_colors[trend_idx],
+                    )
+            
+            if not cr_concentrations_NDS.empty:
+                cr_concentrations_axis.plot(
+                    cr_dates_NDS, 
+                    cr_concentrations_NDS, 
+                    marker='v', 
                     linewidth=0, 
                     markersize=4,
-                    markerfacecolor='#9DC2AD', 
+                    markerfacecolor='#D19999', 
                     markeredgewidth=0.75,
-                    markeredgecolor='#2E8B57',
+                    markeredgecolor='#B12224',
+                    label='Non-Detect',
                 )
             if not cr_concentrations_NDS.empty:
                 cr_concentrations_axis2.plot(
-                    cr_trends_dates_NDS, 
+                    cr_dates_NDS, 
                     cr_concentrations_NDS, 
                     marker='v', 
                     linewidth=0, 
@@ -336,17 +358,17 @@ Number of Trends Calculated: {len(well_cr_trends)}
                     markeredgewidth=0.75,
                     markeredgecolor='#B12224',
                 )
-            calculated_concentrations_plot_lines = cr_concentrations_axis2.plot(
-                cr_trends_dates, 
+
+            cr_river_stage_axis.plot(cr_dates, cr_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
+
+            cr_concentrations_axis2.plot(
+                cr_dates, 
                 calculated_concentrations_trend, 
                 linestyle='-', 
                 color='#E9B831', 
                 label='Calculated Conc.'
             )
-            cr_concentrations_axis2.grid(True, which='major', axis='x', linewidth=0.5, color='#FFFFFF')
-            cr_concentrations_axis2.grid(True, which='major', axis='y', linewidth=0.5, color='#000000')
-            cr_concentrations_axis2.grid(True, which='minor', axis='y', linewidth=0.5, color='#FFFFFF')
-            
+
             wl_elevation_handles, wl_elevation_labels = wl_elevation_axis.get_legend_handles_labels()
             wl_river_stage_handles, wl_river_stage_labels = wl_river_stage_axis.get_legend_handles_labels()
             cr_concentrations_handles, cr_concentrations_labels = cr_concentrations_axis.get_legend_handles_labels()
@@ -362,10 +384,45 @@ Number of Trends Calculated: {len(well_cr_trends)}
             #     Line2D([0], [0], color='red', marker='v', linestyle='None', label='Non-Detect')
             # ]
             # ax.legend(handles=legend_elements)
+
             legend_axis = page_fig.add_subplot(grid_spec[1, 3])
             legend_axis.axis('off')
             legend_axis.legend(all_handles, all_labels, loc='center', frameon=False)
-    
+
+            model_axis = page_fig.add_subplot(grid_spec[5, :])
+            model_axis.axis('off')
+
+            page_fig.text(
+                x=0.5,
+                y=0.17,
+                s='Censored Regression (Tobit) Model',
+                fontsize=8,
+                ha='center',
+                va='center'
+            )
+            
+            beta_interps = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_interp']
+            beta_events = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_event']
+            beta_intercepts = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_intercept']
+
+            model_equation_text = [
+f"""
+Trend{trend_idx + 1}:
+In Conc. = {beta_interps.iloc[trend_idx]} (+/- MISSING)*River Stage + {beta_events.iloc[trend_idx]} (+/- MISSING)*Date + {beta_intercepts.iloc[trend_idx]} (+/- MISSING)
+""" 
+                for trend_idx in range(len(well_cr_trends))
+            ]
+            
+            for trend_idx in range(len(well_cr_trends)):
+                page_fig.text(
+                    x=0.5,
+                    y=0.16 - 0.025 * trend_idx,
+                    s=model_equation_text[trend_idx],
+                    fontsize=8,
+                    ha='center',
+                    va='top'
+                )
+                
             page_fig.subplots_adjust(left = 1.25 / 8.5, right = 1 - 1.5 / 11)
             pdf.savefig(page_fig)
             plt.close(page_fig)
