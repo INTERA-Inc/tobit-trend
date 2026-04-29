@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
+from tqdm import tqdm
 import math
 import os
 import tempfile
@@ -768,32 +769,37 @@ def run_water_level_trend_analysis(
     PND: float = 0.0,
     r_script_path: Optional[str] = None,
 ) -> Dict[str, Optional[Union[TrendSummary, Dict[str, TrendSummary]]]]:
+
     wllist = {name: grp.copy() for name, grp in wl_rs.groupby("NAME", sort=False)}
     wllag: Dict[str, Optional[Union[TrendSummary, Dict[str, TrendSummary]]]] = {}
-    well_curr = 0
-    for name, X in wllist.items():
-        print(name)
-        ## DEBUG
-        well_curr += 1
-        if well_curr == 3:
-            break
-        X_0 = X.loc[~pd.isna(X["WLE"])].copy()
-        if pd.to_datetime(X_0["EVENT"]).dt.year.nunique() > 1:
-            DAT = parse_regression(
-                X, LHS="WLE", RHS=["INTERP", "EVENT"], LOG=LOG, TS=TS
-            )
-            LM = do_ols(
-                DAT,
-                MAXLAG=MAXLAG,
-                LOG=LOG,
-                MINDATE=MINDATE,
-                N=N,
-                PND=PND,
-                r_script_path=r_script_path,
-            )
-            wllag[name] = LM
-        else:
-            wllag[name] = None
+
+    with tqdm(
+        wllist.items(),
+        total=len(wllist),
+        desc="Water level trend analysis",
+        unit="well",
+    ) as pbar:
+        for well_curr, (name, X) in enumerate(pbar, start=1):
+            pbar.set_postfix(current=name, done=f"{well_curr}/{len(wllist)}")
+
+            X_0 = X.loc[~pd.isna(X["WLE"])].copy()
+
+            if pd.to_datetime(X_0["EVENT"]).dt.year.nunique() > 1:
+                DAT = parse_regression(
+                    X, LHS="WLE", RHS=["INTERP", "EVENT"], LOG=LOG, TS=TS
+                )
+                LM = do_ols(
+                    DAT,
+                    MAXLAG=MAXLAG,
+                    LOG=LOG,
+                    MINDATE=MINDATE,
+                    N=N,
+                    PND=PND,
+                    r_script_path=r_script_path,
+                )
+                wllag[name] = LM
+            else:
+                wllag[name] = None
 
     return wllag
 

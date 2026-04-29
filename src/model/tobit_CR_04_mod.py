@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from typing import Any, Optional, List, Dict, Tuple
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import warnings
@@ -1406,86 +1407,87 @@ def do_tobit_rstyle(
     results = []
 
     well_count = x["NAME"].dropna().nunique()
-    well_curr = 0
+
     if x.empty:
         return results
 
-    for name in x["NAME"].dropna().unique():
-        df_full = x[x["NAME"] == name].copy()
-        well_curr += 1
-        ulag_applied = ulags is not None and name in ulags and pd.notna(ulags[name])
+    names = x["NAME"].dropna().unique()
 
-        print(f"Well {name} ({well_curr}/{well_count}) ULAG:{ulag_applied}...")
-        ## DEBUG
-        if well_curr == 3:
-            break
-        is_newrs = newrs_names is not None and name in newrs_names
+    with tqdm(names, total=well_count, desc="Tobit analysis", unit="well") as pbar:
+        for well_curr, name in enumerate(pbar, start=1):
+            df_full = x[x["NAME"] == name].copy()
 
-        for term in sorted(pd.Series(df_full["TERM"]).dropna().unique()):
-            df_term_raw = df_full[df_full["TERM"] == term].copy()
+            ulag_applied = ulags is not None and name in ulags and pd.notna(ulags[name])
+            is_newrs = newrs_names is not None and name in newrs_names
 
-            if is_newrs:
-                # R Script 04 NEWRS branch:
-                # parseRegression(..., RHS = c("EVENT")) ; doTobit(..., no ULAG)
-                lag_scalar = 0
-                df_term = df_term_raw.copy()
-                indep_term = ["EVENT"]
-            else:
-                # Normal RS branch: term-specific lag against full well
-                if ulag_applied:
-                    lag = ulags[name]
-                else:
-                    lag_out = do_lag_r_exact(
-                        df_term_raw,
-                        df_full,
-                        DEP=DEP,
-                        INDEP=INDEP[0],
-                        MAXLAG=MAXLAG,
-                        N=N,
-                        PND=PND,
-                        r_script_path=r_script_path,
-                    )
-                    lag = lag_out["LAG"]
-
-                if isinstance(lag, (list, tuple, np.ndarray, pd.Series)):
-                    lag_scalar = lag[0] if len(lag) > 0 else np.nan
-                else:
-                    lag_scalar = lag
-
-                df_lag = df_full.copy()
-                if pd.notna(lag_scalar) and lag_scalar > 0:
-                    df_lag["INTERP"] = lag_col_rstyle(
-                        df_lag["INTERP"].to_numpy(), -lag_scalar
-                    )
-
-                df_term = df_lag[df_lag["TERM"] == term].copy()
-
-                if pd.notna(lag_scalar) and lag_scalar > 0:
-                    df_term = df_term.loc[~pd.isna(df_term["INTERP"])].copy()
-
-                indep_term = ["INTERP", "EVENT"]
-
-            FORM = create_formula_rstyle(DEP, indep_term, LOG)
-
-            tobit_out = run_tobit_rstyle(
-                x=df_term,
-                DEP=DEP,
-                FORM=FORM,
-                LOG=LOG,
-                N=N,
-                PND=PND,
+            pbar.set_postfix(
+                current=name,
+                done=f"{well_curr}/{well_count}",
+                ULAG=ulag_applied,
             )
 
-            model = extract_model_rstyle(
-                x=df_term,
-                y=tobit_out,
-                DEP=DEP,
-                INDEP=indep_term,
-                LAG=lag_scalar,
-                ITER=int(term),
-            )
+            for term in sorted(pd.Series(df_full["TERM"]).dropna().unique()):
+                df_term_raw = df_full[df_full["TERM"] == term].copy()
 
-            results.append(model)
+                if is_newrs:
+                    lag_scalar = 0
+                    df_term = df_term_raw.copy()
+                    indep_term = ["EVENT"]
+                else:
+                    if ulag_applied:
+                        lag = ulags[name]
+                    else:
+                        lag_out = do_lag_r_exact(
+                            df_term_raw,
+                            df_full,
+                            DEP=DEP,
+                            INDEP=INDEP[0],
+                            MAXLAG=MAXLAG,
+                            N=N,
+                            PND=PND,
+                            r_script_path=r_script_path,
+                        )
+                        lag = lag_out["LAG"]
+
+                    if isinstance(lag, (list, tuple, np.ndarray, pd.Series)):
+                        lag_scalar = lag[0] if len(lag) > 0 else np.nan
+                    else:
+                        lag_scalar = lag
+
+                    df_lag = df_full.copy()
+                    if pd.notna(lag_scalar) and lag_scalar > 0:
+                        df_lag["INTERP"] = lag_col_rstyle(
+                            df_lag["INTERP"].to_numpy(), -lag_scalar
+                        )
+
+                    df_term = df_lag[df_lag["TERM"] == term].copy()
+
+                    if pd.notna(lag_scalar) and lag_scalar > 0:
+                        df_term = df_term.loc[~pd.isna(df_term["INTERP"])].copy()
+
+                    indep_term = ["INTERP", "EVENT"]
+
+                FORM = create_formula_rstyle(DEP, indep_term, LOG)
+
+                tobit_out = run_tobit_rstyle(
+                    x=df_term,
+                    DEP=DEP,
+                    FORM=FORM,
+                    LOG=LOG,
+                    N=N,
+                    PND=PND,
+                )
+
+                model = extract_model_rstyle(
+                    x=df_term,
+                    y=tobit_out,
+                    DEP=DEP,
+                    INDEP=indep_term,
+                    LAG=lag_scalar,
+                    ITER=int(term),
+                )
+
+                results.append(model)
 
     return results
 

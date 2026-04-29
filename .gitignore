@@ -1,0 +1,7 @@
+outputs/
+input/00_Data/
+input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt
+input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt
+input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_3.txt
+outputs/v6_042026/WL_results.csv
+input/00_Data/01_combined_hourly_AWLN_HEIS_CY06_24_v1_031225.csv

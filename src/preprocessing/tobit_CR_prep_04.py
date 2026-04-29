@@ -286,8 +286,8 @@ def build_ulags(wl_trends_flat: pd.DataFrame) -> Dict[str, Optional[int]]:
 # Main script-04 driver (up to modelling)
 # ----------------------------
 def run_script04_prep(
-    CR_TREND_PARQUET: str,
-    WL_TRENDS_FLAT_CSV: str,
+    chem: pd.DataFrame,
+    wl_trends: pd.DataFrame,
     SYSTEM_WELLS_CSV: str,
     TREND_BREAKS_CSV: str,
     NO_RS_CSV: str,
@@ -299,10 +299,10 @@ def run_script04_prep(
     KW_DATE2: pd.Timestamp = pd.Timestamp("2017-04-12"),
 ) -> Tuple[pd.DataFrame, Dict[str, Optional[int]], set]:
     # Load
-    chem = pd.read_parquet(CR_TREND_PARQUET)
+    # chem = pd.read_parquet(CR_TRENDS)
     chem = chem.reset_index(drop=True).copy()
     chem["_src_order"] = np.arange(len(chem), dtype=int)
-    wl_trends = pd.read_csv(WL_TRENDS_FLAT_CSV)
+    # wl_trends = pd.read_parquet(WL_TRENDS)
 
     sys = pd.read_csv(SYSTEM_WELLS_CSV)
     newtrends = pd.read_csv(TREND_BREAKS_CSV)

@@ -20,21 +20,38 @@ chemistry_files = [
 ]
 river_stage_file = "input/00_Data/STAGE_COMB.csv"
 well_info_screen = "input/00_Data/SCREEN.csv"
+##############
+# pre-processing of chem db - no analyte filtering here!!
+analytes = [Chromium, Hexavalent Chromium]
 chromium_analyte = "Chromium"  #analyte to filter chem database for
 hexchrom_analyte = "Hexavalent Chromium" 
 filtered_keep_value = "Y"
 combined_analyte_name = "Hex. Chromium and Fil. Chromium"
-mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing
-ou_keep = ["100-KR-4", "100-HR-3-D", "100-HR-3-H"] # List of OUs to keep
-status_exclude = ["DECOMMISSIONED-V", "DRILLING CANCELLED"]
-reviewq_remove_patterns = ["Y", "R"]
+############
+## WELL FILTERING 
+filter_columns = [STATUS,OU]
+filter_c1 = ["DECOMMISSIONED-V", "DRILLING CANCELLED"]
+filter_c2 = ["100-KR-4", "100-HR-3-D", "100-HR-3-H"]
+
+status_exclude = ["DECOMMISSIONED-V", "DRILLING CANCELLED"] # Well statuses to exclude col: STATUS
+status_exclude_col = "STATUS"
+ou_keep = ["100-KR-4", "100-HR-3-D", "100-HR-3-H"] # List of OUs to keep col: OU
+ou_keep_col = "OU"
+## CHEM FILTERING
+MDL_VALUE = 1 #???
+mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing - non-detect handling
+reviewq_remove_patterns = ["Y", "R"] # Patterns searched in REVIEWQ; matching rows are removed
 collection_purpose_exclude = ["IH", "C", "VAR", "VP", "RC", "WM", "S", "PE", "T", "PD", "CNF"] # list of COLLECTION_PURPOSE codes to remove
-trend_min_year = 2008
-CHEM_YEAR = 2024 # chemistry analysis year cutoff
+duplicate_handling = "daily_avg"
+trend_min_year = 2008 # Minimum year threshold for including a well in the trend dataset - USE FULL DATE!!!
+CHEM_YEAR = 2024 # Max chemistry analysis year cutoff - USE FULL DATE!!!
 
 [prep_wl] # script02 - PREP WATER LEVEL DATA
 wl_file = "input/00_Data/01_combined_hourly_AWLN_HEIS_CY06_24_v1_031225.csv"
-WL_YEAR = 2024  # water level analysis year cutoff
+WL_YEAR = 2024  # water level analysis year cutoff - USE FULL DATE!!!
+
+[wl_trends] # script03
+mindate = "1994-01-01"
 
 [tobit_trends] # script04 - CHEMISTRY TOBIT TREND ANALYSIS
 system_wells_csv = "input/SystemWells.csv"
@@ -51,7 +68,7 @@ log = "log"
 maxlag = 90
 n_min = 7
 pnd_max = 0.5
-mindate = "1994-01-01"
+
 
 [data_rules]
 PRIOR_YEAR = 2023
