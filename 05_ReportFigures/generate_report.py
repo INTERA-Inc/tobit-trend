@@ -313,7 +313,7 @@ Number of Trends Calculated: {len(well_cr_trends)}
                         markerfacecolor=marker_face_colors[trend_idx],
                         markeredgewidth=0.75,
                         markeredgecolor=marker_edge_colors[trend_idx],
-                        label='Observed Concentration' if trend_idx == 0 else '',
+                        label='Observed Concentration' if len(well_cr_trends) == 1 else f'Observed Conc. (Trend{trend_idx + 1})',
                     )
                 
                 cr_concentrations_axis2.plot(
