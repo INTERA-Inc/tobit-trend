@@ -15,16 +15,16 @@ print("IFILE WELLS\n", ifile_wells.head(), "\n")
 ifile_no_riv_stage = pd.read_csv('input/NoRS.csv')
 print("No River Stage\n", ifile_no_riv_stage.head(), "\n")
 
-cr_trends_wl_lag = pd.read_csv('input/R_CrTrends_WLLAG.csv')
-wl_trends = pd.read_csv('input/WLTrends_flat.csv')
-print("Cr Trends WL Lag\n", cr_trends_wl_lag.head(), "\n")
-print("WL Trends\n", wl_trends.head(), "\n")
+ifile_cr_trends = pd.read_csv('input/R_CrTrends_WLLAG.csv')
+ifile_wl_trends = pd.read_csv('input/WLTrends_flat.csv')
+print("Cr Trends WL Lag\n", ifile_cr_trends.head(), "\n")
+print("WL Trends\n", ifile_wl_trends.head(), "\n")
 
-wl_rs_parquet = pd.read_parquet('input/WL_RS.parquet')
-print("WL RS Parquet\n", wl_rs_parquet.head(), "\n")
+ifile_wl_rs = pd.read_parquet('input/WL_RS.parquet')
+print("WL RS Parquet\n", ifile_wl_rs.head(), "\n")
 
-prepped_chem_rs_parquet = pd.read_parquet('input/R_prepped_chem_rs.parquet')
-print("Prepped Chem RS Parquet\n", prepped_chem_rs_parquet[prepped_chem_rs_parquet['VAL'].notna()], "\n")
+ifile_chem_rs = pd.read_parquet('input/R_prepped_chem_rs.parquet')
+print("Prepped Chem RS Parquet\n", ifile_chem_rs[ifile_chem_rs['VAL'].notna()], "\n")
 
 ifile_gis_highriv = gpd.read_file('input/gis_export/HIGHRIV.shp')
 ifile_gis_roads = gpd.read_file('input/gis_export/ROADS.shp')
@@ -40,8 +40,8 @@ ifile_gis_wells = gpd.GeoDataFrame(ifile_wells, geometry=gpd.points_from_xy(ifil
 OUs = ['100-HR-3-D', '100-HR-3-H', '100-KR-4']
 
 gis_wells = set(ifile_gis_wells['NAME'])
-wl_wells = set(wl_rs_parquet['NAME'])
-cr_wells = set(prepped_chem_rs_parquet['NAME'])
+wl_wells = set(ifile_wl_rs['NAME'])
+cr_wells = set(ifile_chem_rs['NAME'])
 
 valid_wells = gis_wells & wl_wells & cr_wells
 
@@ -58,13 +58,13 @@ for ou in OUs:
     num_wells = len(wells_ou)
     print("WELLS OU:\n", wells_ou, "\n")
 
-    fn = f"output/TobitRegression_WLlag - {ou}_CY2026_v4_041526.pdf"
-    with PdfPages(fn) as pdf:
+    filename = f"output/TobitRegression_WLlag - {ou}_CY2026_v4_041526.pdf"
+    with PdfPages(filename) as pdf:
         for i in range(num_wells):
             well = wells_ou.iloc[i, 0]
             gis_well = ifile_gis_wells[ifile_gis_wells['NAME'] == well]
-            wl_trends_well = wl_rs_parquet[wl_rs_parquet['NAME'] == well]
-            cr_trends_well = prepped_chem_rs_parquet[prepped_chem_rs_parquet['NAME'] == well]
+            wl_trends_well = ifile_wl_rs[ifile_wl_rs['NAME'] == well]
+            cr_trends_well = ifile_chem_rs[ifile_chem_rs['NAME'] == well]
 
             gis_ou = ifile_gis_ous[ifile_gis_ous['Name'] == ou]
 
@@ -75,7 +75,7 @@ for ou in OUs:
 
             page_fig.text(0.5, 0.95, f"{well}", ha='center', va='top', fontsize=20, fontstyle='italic', fontweight='light')
 
-            well_cr_trends = cr_trends_wl_lag.loc[cr_trends_wl_lag['WELL'] == well, 'ITER'].values
+            well_cr_trends = ifile_cr_trends.loc[ifile_cr_trends['WELL'] == well, 'ITER'].values
 
             page_fig.text(
                 0.5, 
@@ -104,8 +104,8 @@ Number of Trends Calculated: {len(well_cr_trends)}
             trends_values = []
             for row_idx, row_label in enumerate(trends_rows):
                 row_values = []
-                wl_lag = wl_trends.loc[wl_trends["KEY"] == well, "LAG"].item()
-                wl_p_trend = wl_trends.loc[wl_trends["KEY"] == well, "p_trend"].item()
+                wl_lag = ifile_wl_trends.loc[ifile_wl_trends["KEY"] == well, "LAG"].item()
+                wl_p_trend = ifile_wl_trends.loc[ifile_wl_trends["KEY"] == well, "p_trend"].item()
                 # WL column
                 if row_idx == 0:  # Lag Time
                     row_values.append(f'{round(wl_lag) if ~np.isnan(wl_lag) else 'NA'}')
@@ -116,7 +116,7 @@ Number of Trends Calculated: {len(well_cr_trends)}
                 
                 # Conc/Trend columns
                 for trend_idx in range(len(well_cr_trends)):
-                    trend_row = cr_trends_wl_lag[cr_trends_wl_lag['WELL'] == well].iloc[trend_idx]
+                    trend_row = ifile_cr_trends[ifile_cr_trends['WELL'] == well].iloc[trend_idx]
                     if row_idx == 0:  # Lag Time
                         row_values.append(f'{round(trend_row["LAG"])}' if ~np.isnan(trend_row["LAG"]) else 'NA')
                     elif row_idx == 1:  # p_trend
@@ -401,9 +401,9 @@ Number of Trends Calculated: {len(well_cr_trends)}
                 va='center'
             )
             
-            beta_interps = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_interp']
-            beta_events = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_event']
-            beta_intercepts = cr_trends_wl_lag.loc[cr_trends_wl_lag['ITER'] == trend_idx + 1, 'beta_intercept']
+            beta_interps = ifile_cr_trends.loc[ifile_cr_trends['ITER'] == trend_idx + 1, 'beta_interp']
+            beta_events = ifile_cr_trends.loc[ifile_cr_trends['ITER'] == trend_idx + 1, 'beta_event']
+            beta_intercepts = ifile_cr_trends.loc[ifile_cr_trends['ITER'] == trend_idx + 1, 'beta_intercept']
 
             model_equation_text = [
 f"""
