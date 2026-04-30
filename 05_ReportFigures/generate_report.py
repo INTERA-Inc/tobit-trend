@@ -7,6 +7,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.ticker import FormatStrFormatter, LogLocator, NullFormatter
 from matplotlib.dates import YearLocator, DateFormatter
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.patches as patches
 
 # Import well information data
 ifile_wells = pd.read_csv('input/Cr_TrendData_unique_wells.csv')
@@ -58,25 +59,19 @@ for ou in OUs:
     num_wells = len(wells_ou)
     print("WELLS OU:\n", wells_ou, "\n")
 
-    filename = f"output/TobitRegression_WLlag - {ou}_CY2026_v4_041526.pdf"
-    with PdfPages(filename) as pdf:
+    output_file = f"output/TobitRegression_WLlag - {ou}_CY2026_v4_041526.pdf"
+    with PdfPages(output_file) as pdf:
         for i in range(num_wells):
             well = wells_ou.iloc[i, 0]
+            well_cr_trends = ifile_cr_trends.loc[ifile_cr_trends['WELL'] == well, 'ITER'].values
             gis_well = ifile_gis_wells[ifile_gis_wells['NAME'] == well]
             wl_trends_well = ifile_wl_rs[ifile_wl_rs['NAME'] == well]
             cr_trends_well = ifile_chem_rs[ifile_chem_rs['NAME'] == well]
-
-            gis_ou = ifile_gis_ous[ifile_gis_ous['Name'] == ou]
-
-            gis_ou = gis_ou.to_crs(ifile_gis_highriv.crs)
 
             page_fig = plt.figure(figsize=(8.5, 11))
             grid_spec = GridSpec(nrows=6, ncols=4, wspace=0.1, hspace=0.15)
 
             page_fig.text(0.5, 0.95, f"{well}", ha='center', va='top', fontsize=20, fontstyle='italic', fontweight='light')
-
-            well_cr_trends = ifile_cr_trends.loc[ifile_cr_trends['WELL'] == well, 'ITER'].values
-
             page_fig.text(
                 0.5, 
                 0.925, 
@@ -151,59 +146,19 @@ Number of Trends Calculated: {len(well_cr_trends)}
                 if row == 0:
                     cell.set_text_props(fontproperties=FontProperties(weight='bold'))
 
-            gis_axis = page_fig.add_subplot(grid_spec[1, 0:2])
+            gis_ou = ifile_gis_ous[ifile_gis_ous['Name'] == ou]
+            gis_ou = gis_ou.to_crs(ifile_gis_highriv.crs)
 
+            gis_axis = page_fig.add_subplot(grid_spec[1, 0:2])
             gis_roads.plot(ax=gis_axis, color='#E5E5E5', linewidth=1, markersize=50, zorder=1)
             ifile_gis_highriv.plot(ax=gis_axis, color='#E5E5E5', edgecolor='black', linewidth=1, zorder=2)
             gis_ou.plot(ax=gis_axis, color='none', edgecolor='#006400', linewidth=1.5, zorder=3)
             ifile_gis_wells.plot(ax=gis_axis, color='#B3B3B3', edgecolor='#7F7F7F', markersize=4, linewidth=0.5, zorder=4)
             gis_well.plot(ax=gis_axis, color='#FF0000', marker='o', edgecolor='#000000', markersize=12, linewidth=0.75, zorder=5)
-            
             gis_axis.set_xticks([])
             gis_axis.set_yticks([])
-
             gis_axis.set_xlim([561500, 586000])
             gis_axis.set_ylim([145000, 155000])
-
-            wl_elevations = wl_trends_well['WLE']
-            wl_river_stages = wl_trends_well['INTERP']
-            wl_trends_dates = pd.to_datetime(wl_trends_well['EVENT'])
-
-            wl_elevations_clean = wl_elevations[~np.isnan(wl_elevations)]
-            wl_trends_dates_clean = wl_trends_dates[~np.isnan(wl_elevations)]
-
-            wl_elevation_axis = page_fig.add_subplot(grid_spec[2, :])
-            wl_elevation_axis.set_facecolor('#E5E5E5')
-            wl_elevation_axis.grid(True, linewidth=0.5, color='#FFFFFF')
-            
-            wl_elevation_axis.xaxis.set_major_locator(YearLocator())
-            wl_elevation_axis.xaxis.set_major_formatter(DateFormatter('%Y'))
-            wl_elevation_axis.set_xticklabels([])
-
-            wl_elevation_axis.set_ylim(wl_elevations.min(skipna=True) - 2, wl_elevations.max(skipna=True) + 2)
-            wl_elevation_axis.set_ylabel('Water-Level (m amsl)')
-            wl_elevation_plot_lines = wl_elevation_axis.plot(
-                wl_trends_dates_clean, 
-                wl_elevations_clean, 
-                marker='o', 
-                linewidth=1, 
-                linestyle='-', 
-                color='#050607', 
-                markersize=4,
-                markerfacecolor='#FFFFFF', 
-                markeredgewidth=0.75, 
-                markeredgecolor='#050607',
-                label='Observed Groundwater Elevation'
-            )
-
-            wl_river_stage_axis = wl_elevation_axis.twinx()
-            min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
-            max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
-            ticks = np.arange(min_stage, max_stage + 2, 2)
-            wl_river_stage_axis.set_yticks(ticks)
-            wl_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
-            wl_river_stage_axis.set_ylabel('River Stage (m amsl)')
-            wl_river_stage_axis.plot(wl_trends_dates, wl_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
 
             cr_trends_well_clean = cr_trends_well.loc[cr_trends_well['NDS'].notna()]
             cr_concentrations = cr_trends_well['VAL']
@@ -282,6 +237,103 @@ Number of Trends Calculated: {len(well_cr_trends)}
             marker_face_colors = ['#ADD2BD', '#C9C5E0', '#B9B9B9', '#FFDC9B', '#9B9BEB']
             marker_edge_colors = ['#2E8B57', '#756BB1', '#4D4D4D', '#FFA500', '#0000CD']
 
+            wl_elevations: pd.Series[float] = wl_trends_well['WLE']
+            wl_river_stages: pd.Series[float] = wl_trends_well['INTERP']
+            wl_trends_dates = pd.to_datetime(wl_trends_well['EVENT'])
+            wl_elevations_clean = wl_elevations[~np.isnan(wl_elevations)]
+            wl_trends_dates_clean = wl_trends_dates[~np.isnan(wl_elevations)]
+
+            wl_elevation_axis = page_fig.add_subplot(grid_spec[2, :])
+            wl_elevation_axis.set_facecolor('#E5E5E5')
+            wl_elevation_axis.grid(True, linewidth=0.5, color='#FFFFFF')
+            wl_elevation_axis.xaxis.set_major_locator(YearLocator())
+            wl_elevation_axis.xaxis.set_major_formatter(DateFormatter('%Y'))
+            wl_elevation_axis.set_xticklabels([])
+            wl_elevation_axis.set_ylabel('Water-Level (m amsl)')
+
+            wl_river_stage_axis = wl_elevation_axis.twinx()
+            min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
+            max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
+            ticks = np.arange(min_stage, max_stage + 2, 2)
+            wl_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
+            wl_river_stage_axis.set_yticks(ticks)
+            wl_river_stage_axis.set_ylabel('River Stage (m amsl)')
+
+            wl_trends_dates_filtered = wl_trends_dates[wl_trends_dates >= cr_dates.min()]
+            wl_river_stages_filtered = wl_river_stages[-1 * wl_trends_dates_filtered.count():]
+
+            page_size = page_fig.get_size_inches() * 2.54 # cm
+            screen_xrange = wl_trends_dates.max().year - wl_trends_dates.min().year
+            screen_xgrid = screen_xrange / (0.96 * page_size[0])
+            screen_xmax = pd.Timestamp(year=cr_dates.min().year - 1, month=10, day=1)
+            screen_xmin = screen_xmax - pd.Timedelta(days=0.02 * page_size[0] * screen_xgrid * 365.25)
+            epoch = pd.Timestamp(year=1970, month=1, day=1)
+            screen_xmax = (screen_xmax - epoch) / pd.Timedelta(days=1)
+            screen_xmin = (screen_xmin - epoch) / pd.Timedelta(days=1)
+            screen_ymin = wl_trends_well['BOT'].iloc[0]
+            screen_ymax = wl_trends_well['TOP'].iloc[0]
+
+            screened_interval = patches.Rectangle(
+                xy=(screen_xmin, screen_ymin), 
+                width=screen_xmax - screen_xmin, 
+                height=screen_ymax - screen_ymin,
+                facecolor='bisque',
+                edgecolor='black',
+                linewidth=0.5,
+                zorder=10,
+            )
+
+            n_lines = 5
+            screen_line_ypositions = np.linspace(screen_ymin, screen_ymax, n_lines + 2)[1:-1]
+
+            for y in screen_line_ypositions:
+                wl_elevation_axis.hlines(
+                    xmin=screen_xmin,
+                    xmax=screen_xmax,
+                    y=y,
+                    colors='black',
+                    linewidth=0.5,
+                    zorder=11
+                )
+
+            if (screen_ymin <= wl_elevations_clean.max() and 
+                screen_ymax >= wl_elevations_clean.min()):
+                wl_elevation_axis.add_patch(screened_interval)
+
+            wl_elevation_axis.plot(
+                wl_trends_dates_clean, 
+                wl_elevations_clean, 
+                marker='o', 
+                linewidth=1, 
+                linestyle='-', 
+                color='#050607', 
+                markersize=4,
+                markerfacecolor='#FFFFFF', 
+                markeredgewidth=0.75, 
+                markeredgecolor='#050607',
+                label='Observed Groundwater Elevation',
+                zorder=3
+            )
+
+            wl_river_stage_axis.plot(
+                wl_trends_dates_filtered,
+                wl_river_stages_filtered,
+                linewidth=0.75, 
+                color='#97C4EF', 
+                label='River Stage',
+                zorder=2
+            )
+
+            cr_river_stage_axis.plot(
+                cr_dates, 
+                cr_river_stages, 
+                linewidth=0.75, 
+                color='#97C4EF', 
+                label='River Stage'
+            )
+
+            wl_river_stage_axis.set_xlim(cr_river_stage_axis.get_xlim())
+
             for trend_idx in range(len(well_cr_trends)):
                 cr_concentrations_trend = cr_trends_well_clean.loc[cr_trends_well_clean['TERM'].astype(int) == trend_idx + 1, 'VAL']
                 cr_concentrations_clean_trend = cr_concentrations_trend[~np.isnan(cr_concentrations_trend)]
@@ -358,8 +410,6 @@ Number of Trends Calculated: {len(well_cr_trends)}
                     markeredgewidth=0.75,
                     markeredgecolor='#B12224',
                 )
-
-            cr_river_stage_axis.plot(cr_dates, cr_river_stages, linewidth=0.75, color='#97C4EF', label='River Stage')
 
             cr_concentrations_axis2.plot(
                 cr_dates, 
