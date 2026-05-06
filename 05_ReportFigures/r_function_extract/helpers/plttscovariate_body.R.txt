@@ -1,7 +1,0 @@
-structure(function (X, dep = "WLE", cov = "INTERP", title = TRUE, 
-    ...) 
-standardGeneric("plttscovariate"), generic = structure("plttscovariate", package = "sspaTrendAnalysis"), package = "sspaTrendAnalysis", group = list(), valueClass = character(0), signature = c("X", 
-"dep", "cov", "title"), default = `\001NULL\001`, skeleton = (function (X, 
-    dep = "WLE", cov = "INTERP", title = TRUE, ...) 
-stop("invalid call in method dispatch to 'plttscovariate' (no default method)", 
-    domain = NA))(X, dep, cov, title, ...), class = structure("standardGeneric", package = "methods"))

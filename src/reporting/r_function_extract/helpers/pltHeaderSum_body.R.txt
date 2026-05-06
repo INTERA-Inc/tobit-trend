@@ -1,0 +1,24 @@
+function(X, WL = NULL, p=0.05){
+
+            #---------------------------------------------------------------------------------#
+            #--Extract Summary Data--#
+            TBL <- tblHeader(X, WL, p)
+            #---------------------------------------------------------------------------------#
+
+            #---------------------------------------------------------------------------------#
+            #--Set-up Table Theme--#
+            tt <- ttheme_minimal(core = list(fg_params=list(cex = 0.8),padding=unit(c(1, 1), "mm")),
+                                 colhead = list(fg_params=list(cex = 0.8),padding=unit(c(1, 1), "mm")),
+                                 rowhead = list(fg_params=list(cex = 0.8),padding=unit(c(3, 2), "mm")))
+            #---------------------------------------------------------------------------------#
+
+            #---------------------------------------------------------------------------------#
+            #--Plot Header--#
+            frame()
+            vps <- baseViewports()
+            pushViewport(vps$inner, vps$figure, vps$plot)
+            grid.table(TBL, theme = tt)
+            upViewport(2)
+            #---------------------------------------------------------------------------------#
+
+          }
