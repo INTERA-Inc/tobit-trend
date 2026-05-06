@@ -1,8 +1,0 @@
-[input_files]
-wells_file = "./input/Cr_TrendData_unique_wells.csv"
-ifile_no_river_stage = "./input/NoRS.csv"
-ifile_gis_highriv = "./input/gis_export/HIGHRIV.shp"
-ifile_gis_roads = "./input/gis_export/ROADS.shp"
-ifile_gis_ou = "./input/gis_export/OU.shp"
-wl_rs_file = "./input/WL_RS.parquet"
-cr_rs_file = "./input/R_Prepped_Chem_RS.parquet"

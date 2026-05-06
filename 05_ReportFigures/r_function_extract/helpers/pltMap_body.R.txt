@@ -1,6 +1,0 @@
-structure(function (X, COORDS, BASE, OU) 
-standardGeneric("pltMap"), generic = structure("pltMap", package = "sspaHanfordTrends"), package = "sspaHanfordTrends", group = list(), valueClass = character(0), signature = c("X", 
-"COORDS", "BASE", "OU"), default = `\001NULL\001`, skeleton = (function (X, 
-    COORDS, BASE, OU) 
-stop("invalid call in method dispatch to 'pltMap' (no default method)", 
-    domain = NA))(X, COORDS, BASE, OU), class = structure("standardGeneric", package = "methods"))
