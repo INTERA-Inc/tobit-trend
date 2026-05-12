@@ -11,6 +11,7 @@ from matplotlib.dates import YearLocator, DateFormatter
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.patches as patches
 from typing import Tuple
+from pathlib import Path
 
 # Figure constants
 FIGURE_SIZE = (8.5, 11)
@@ -57,12 +58,15 @@ def plt_report(
     ifile_chem_rs: pd.DataFrame,
     ifile_no_rs: pd.DataFrame,
     wl_wells_set: set[str],
+    river_shapefile: Path,
+    roads_shapefile: Path,
+    ou_shapefile: Path,
+    output_dir: Path,
+    run_ver: str,
 ):
     for ou in OUs:
         wells_ou = wells[wells["OU"] == ou]
-        output_file = (
-            f"outputs/v6_042026/TobitRegression_WLlag - {ou}_CY2026_v4_042026.pdf"
-        )
+        output_file = output_dir / f"TobitRegression_WLlag_{ou}_CY2024_{run_ver}.pdf"
 
         with PdfPages(output_file) as pdf:
             well: str
@@ -97,7 +101,16 @@ def plt_report(
                     grid_spec,
                 )
 
-                plt_gis(gis_wells, ou, gis_well, page_fig, grid_spec)
+                plt_gis(
+                    gis_wells,
+                    ou,
+                    gis_well,
+                    page_fig,
+                    grid_spec,
+                    river_shapefile,
+                    roads_shapefile,
+                    ou_shapefile,
+                )
 
                 num_trend_equations = plt_regression(
                     chem_trends_well, ifile_chem_trends, well, page_fig
@@ -325,10 +338,13 @@ def plt_gis(
     gis_well: gpd.GeoDataFrame,
     page_fig: Figure,
     grid_spec: GridSpec,
+    river_shapefile: Path,
+    roads_shapefile: Path,
+    ou_shapefile: Path,
 ):
-    ifile_gis_highriv = gpd.read_file("input/gis_export/HIGHRIV.shp")
-    ifile_gis_roads = gpd.read_file("input/gis_export/ROADS.shp")
-    ifile_gis_ous = gpd.read_file("input/gis_export/OU.shp")
+    ifile_gis_highriv = gpd.read_file(river_shapefile)
+    ifile_gis_roads = gpd.read_file(roads_shapefile)
+    ifile_gis_ous = gpd.read_file(ou_shapefile)
     gis_roads = ifile_gis_roads.to_crs(ifile_gis_highriv.crs)
     ifile_gis_ous = ifile_gis_ous.to_crs(ifile_gis_highriv.crs)
     gis_ou = ifile_gis_ous[ifile_gis_ous["Name"] == ou]
@@ -389,6 +405,9 @@ def plt_regression(
         beta_interp: float = row["beta_interp"]
         beta_event: float = row["beta_event"]
         beta_intercept: float = row["beta_intercept"]
+        se_interp: float = row["se_interp"]
+        se_event: float = row["se_event"]
+        se_intercept: float = row["se_intercept"]
 
         if row["p_trend"] > 0.05:
             model_equation_text.append(
@@ -400,11 +419,9 @@ def plt_regression(
             and ~np.isnan(beta_event)
             and ~np.isnan(beta_intercept)
         ):
-            model_equation_text.append(
-                f"""Trend{trend_idx + 1}:
-In Conc. = {beta_interp} (+/- MISSING)*River Stage + {beta_event} (+/- MISSING)*Date + {beta_intercept} (+/- MISSING)
-"""
-            )
+            model_equation_text.append(f"""Trend{trend_idx + 1}:
+In Conc. = {beta_interp:.2f} (+/- {se_interp:.3f})*River Stage + {beta_event:.5f} (+/- {se_event:.6f})*Date + {beta_intercept:.2f} (+/- {se_intercept:.0f})
+""")
             num_trend_equations += 1
         else:
             model_equation_text.append(
@@ -464,7 +481,7 @@ def plt_chem(
     )
     chem_river_stages = chem_rs_well["INTERP"]
 
-    print(f"Chem TRENDS WELL CLEAN\n{chem_rs_well_clean}\n")
+    # print(f"Chem TRENDS WELL CLEAN\n{chem_rs_well_clean}\n")
 
     chem_concentrations_axis = page_fig.add_subplot(
         grid_spec[3, :] if well in wl_wells_set else grid_spec[2, :]
@@ -606,9 +623,11 @@ def plt_chem(
                 markerfacecolor=marker_face_colors[trend_idx],
                 markeredgewidth=0.75,
                 markeredgecolor=marker_edge_colors[trend_idx],
-                label="Observed Concentration"
-                if len(chem_trends_well) == 1
-                else f"Observed Conc. (Trend{trend_idx + 1})",
+                label=(
+                    "Observed Concentration"
+                    if len(chem_trends_well) == 1
+                    else f"Observed Conc. (Trend{trend_idx + 1})"
+                ),
             )
 
         if num_trend_equations > 0:
@@ -836,50 +855,66 @@ def plt_legend(
     legend_axis.legend(all_handles, all_labels, loc="center", frameon=False)
 
 
-def main():
-    ifile_wells = pd.read_csv("input/Cr_TrendData/Cr_TrendData_unique_wells.csv")
-    ifile_wl_trends = pd.read_csv("input/WLTrends_flat.csv")
-    ifile_chem_trends = pd.read_csv("outputs/v6_042026/TobitResults.csv")
-    ifile_wl_rs = pd.read_parquet("input/WL_TrendData_2024/WL_RS.parquet")
-    ifile_chem_rs = pd.read_parquet("input/Cr_TrendData/R_prepped_chem_rs.parquet")
-    ifile_no_rs = pd.read_csv("input/NoRS.csv")
+def generate_report(
+    *,
+    output_dir: Path,
+    wells: pd.DataFrame,
+    dist: pd.DataFrame,
+    wl_trends: pd.DataFrame,
+    chem_trends: pd.DataFrame,
+    wl_rs: pd.DataFrame,
+    chem_rs: pd.DataFrame,
+    no_rs: pd.DataFrame,
+    river_shapefile: Path,
+    roads_shapefile: Path,
+    ou_shapefile: Path,
+    ous: list[str],
+    map_crs: str,
+    run_ver: str,
+) -> None:
+    # merge DIST to wells
+    if "DIST" not in wells.columns:
+        if "NAME" not in dist.columns or "DIST" not in dist.columns:
+            raise KeyError("dist must contain NAME and DIST columns.")
 
-    print("Wells\n", ifile_wells.head(), "\n")
-    print("WL Trends\n", ifile_wl_trends.head(), "\n")
-    print("Cr Trends WL Lag\n", ifile_chem_trends.head(), "\n")
-    print("WL RS Parquet\n", ifile_wl_rs.head(), "\n")
-    print(
-        "Prepped Chem RS Parquet\n", ifile_chem_rs[ifile_chem_rs["VAL"].notna()], "\n"
-    )
-    print("No River Stage\n", ifile_no_rs.head(), "\n")
+        wells = wells.merge(
+            dist[["NAME", "DIST"]],
+            on="NAME",
+            how="left",
+            validate="one_to_one",
+        )
 
-    OUs = ["100-HR-3-D", "100-HR-3-H", "100-KR-4"]
+        if wells["DIST"].isna().any():
+            missing = wells.loc[wells["DIST"].isna(), "NAME"].tolist()
+            raise ValueError(f"Missing DIST values for wells: {missing}")
 
     gis_wells = gpd.GeoDataFrame(
-        ifile_wells,
-        geometry=gpd.points_from_xy(ifile_wells["XCOORDS"], ifile_wells["YCOORDS"]),
-        crs="EPSG:2926",
+        wells,
+        geometry=gpd.points_from_xy(wells["XCOORDS"], wells["YCOORDS"]),
+        crs=map_crs,
     )
+
     gis_wells_set = set(gis_wells["NAME"])
-    wl_wells_set: set[str] = set(ifile_wl_rs["NAME"])
-    chem_wells_set = set(ifile_chem_rs["NAME"])
+    wl_wells_set: set[str] = set(wl_rs["NAME"])
+    chem_wells_set = set(chem_rs["NAME"])
     valid_wells = gis_wells_set & chem_wells_set
-    wells = ifile_wells[ifile_wells["NAME"].isin(valid_wells)]
+    wells = wells[wells["NAME"].isin(valid_wells)]
 
     plt.rcParams["font.family"] = "Arial"
 
     plt_report(
-        OUs,
+        ous,
         wells,
-        ifile_wl_trends,
-        ifile_chem_trends,
+        wl_trends,
+        chem_trends,
         gis_wells,
-        ifile_wl_rs,
-        ifile_chem_rs,
-        ifile_no_rs,
+        wl_rs,
+        chem_rs,
+        no_rs,
         wl_wells_set,
+        river_shapefile,
+        roads_shapefile,
+        ou_shapefile,
+        output_dir,
+        run_ver,
     )
-
-
-if __name__ == "__main__":
-    main()
