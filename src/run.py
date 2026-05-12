@@ -86,7 +86,7 @@ def main():
         chem_files=config.chemistry_files,
         stage_comb=load_table(config.river_stage_file),
         dist=dist,  # from script 00
-        stagedist=stagedist,  # from script 00
+        stagedist=stagedist,  # from script 00  
         well=load_table(config.well_info_well),
         screen=load_table(config.well_info_screen),
         yr=config.CHEM_YEAR,
