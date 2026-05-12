@@ -1,0 +1,121 @@
+function(X,
+                      WL,
+                      COORDS,
+                      BASE,
+                      OU=NULL,
+                      col=c(rgb(46,139,87,255,maxColorValue=255),
+                            rgb(117,107,177,255,maxColorValue=255),
+                            rgb(77,77,77,255,maxColorValue=255)),
+                      colline=c(rgb(46,139,87,255,maxColorValue=255),
+                                rgb(117,107,177,255,maxColorValue=255),
+                                rgb(77,77,77,255,maxColorValue=255)),
+                      pch=c(21,21,21),
+                      bg=c(rgb(46,139,87,100,maxColorValue=255),
+                           rgb(117,107,177,100,maxColorValue=255),
+                           rgb(77,77,77,100,maxColorValue=255)),
+                      wlcol='black',
+                      wlbg='white',
+                      ylab='Concentration',
+                      sci=FALSE,
+                      p=0.05,
+                      cex=0.8){
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Layout--#
+  par(mar=c(1,1,1,1))
+  if(is.null(WL)){
+    layout(matrix(c(1,1,2,2,3,4,5,5,6,6,7,7), ncol=2, nrow=6, byrow=TRUE), heights=c(2,5,4,5,5,7), widths=c(4,4))
+  } else {
+    layout(matrix(c(1,1,2,2,3,4,5,5,6,6,7,7,8,8), ncol=2, nrow=7, byrow=TRUE), heights=c(3,5,4,5,5,5,7), widths=c(4,4))
+  }
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Header--#
+  par(mar=c(0,0,1,0))
+  pltHeader(X)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Header Summary Table--#
+  par(mar=c(0,0,1,0))
+  pltHeaderSum(X, WL, p)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Map--#
+  par(mar=c(0.5,6,0,0.5), mgp=c(1.8,0.3,0))
+  pltMap(X, COORDS, BASE, OU)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Legend--#
+  par(mar=c(0.5,5,0,0.5), mgp=c(1.8,0.3,0))
+  pltTobitLegend(X, WL, col=col, bg=bg)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Water-Levels and River Stage
+  if(!is.null(WL)){
+
+    #---------------------------------------------------------------------------------#
+    #--Find y-axis limits that includes screened interval--#
+    miny1 <- min(c(WL@DATA$TOP[1],WL@DATA$BOT[1],WL@DATA$WLE),na.rm=TRUE)
+    maxy1 <- max(c(WL@DATA$TOP[1],WL@DATA$BOT[1],WL@DATA$WLE),na.rm=TRUE)
+    #---------------------------------------------------------------------------------#
+
+    #---------------------------------------------------------------------------------#
+    #--Extract Screened Interval--#
+    tos <- WL@DATA$TOP[1]
+    bos <- WL@DATA$BOT[1]
+    #---------------------------------------------------------------------------------#
+
+    #---------------------------------------------------------------------------------#
+    #--Extract max x value for plotting screened interval rectangle--#
+    xmax <- as.Date(ISOdate(year(min(WL@DATA$EVENT))-1,12,01))
+    #---------------------------------------------------------------------------------#
+
+    #---------------------------------------------------------------------------------#
+    #--Plot Water-Levels and River Stage--#
+    par(mar=c(0.5,6,0,5))
+    plttscovariate(WL,log=FALSE,title=FALSE,miny1=miny1,maxy1=maxy1,col=wlcol,bg=wlbg,colline='black',collinecov=rgb(30,144,255,100,maxColorValue=255),ylab1='Water-Level (m amsl)',lwd=1,axis=FALSE)
+    #---------------------------------------------------------------------------------#
+
+    #---------------------------------------------------------------------------------#
+    #--Determine min x value for plotting screened interval rectangle--#
+    size <- dev.size('cm')
+    xrange <- max(year(WL@DATA$EVENT)) - min(year(WL@DATA$EVENT))
+    len <- 0.04*size
+    xgrid <- xrange/(size[1] - len[1])
+    xmin <- xmax - ((len[1]/2)*xgrid*365.25)
+    #---------------------------------------------------------------------------------#
+
+    #---------------------------------------------------------------------------------#
+    #-Plot Screened Interval--#
+    rect(xmin,bos,xmax,tos,bg="white",col='bisque')
+    rect(xmin,bos,xmax,tos,density=5,angle=0)
+    #---------------------------------------------------------------------------------#
+
+  }
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Chemistry and River Stage--#
+  par(mar=c(0.5,6,1,5))
+  plttscovariate(X,dep='VAL',log=TRUE,title=FALSE,ylab1=ylab,axis=FALSE,col=col,colline=colline,bg=bg,collinecov=rgb(30,144,255,100,maxColorValue=255),pch=pch)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Predicted and Observed Data--#
+  par(mar=c(2,6,1,5))
+  plttsmodel(X, log=TRUE,title=FALSE,ylab=ylab,col=col,colline=colline,bg=bg,pch=pch)
+  #---------------------------------------------------------------------------------#
+
+  #---------------------------------------------------------------------------------#
+  #--Plot Regression--#
+  par(mar=c(3,6,1,5))
+  pltregression(X,sci,p,cex=cex)
+  #---------------------------------------------------------------------------------#
+
+}
+<environment: namespace:sspaHanfordTrends>
