@@ -130,147 +130,6 @@ def _tricube(u):
     return out
 
 
-def loess_fit_debug_1d(x, y, span=0.75, degree=2):
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-    n = len(x)
-    q = max(int(np.ceil(span * n)), degree + 1)
-
-    fitted = np.full(n, np.nan, dtype=float)
-
-    for i in range(n):
-        d = np.abs(x - x[i])
-        h = np.partition(d, q - 1)[q - 1]
-
-        if h == 0:
-            w = (d == 0).astype(float)
-        else:
-            u = d / h
-            w = np.where(np.abs(u) < 1, (1 - np.abs(u) ** 3) ** 3, 0.0)
-
-        z = x - x[i]
-        X = np.column_stack([np.ones(n), z, z**2])
-
-        keep = w > 0
-        Xw = X[keep] * np.sqrt(w[keep])[:, None]
-        yw = y[keep] * np.sqrt(w[keep])
-
-        beta, *_ = np.linalg.lstsq(Xw, yw, rcond=None)
-        fitted[i] = beta[0]
-
-    return fitted
-
-
-# def crosscor_rstyle(x1, y1, x2, y2, lag=0):
-#     """
-#     Port of R crosscor().
-
-#     Returns a DataFrame with columns ['acf', 'lag'] to match:
-#       data.table(acf = y, lag = lag)
-#     """
-#     lag = int(round(lag))
-
-#     x1 = np.asarray(x1)
-#     y1 = np.asarray(y1, dtype=float)
-#     x2 = np.asarray(x2)
-#     y2 = np.asarray(y2, dtype=float)
-
-#     x_lag = x1 - lag
-#     x = np.intersect1d(x2, x_lag)
-
-#     # R:
-#     # i1 <- sapply(x + lag, function(u) which.max(u == x1))
-#     # i2 <- sapply(x,       function(u) which.max(u == x2))
-#     #
-#     # which.max(logical) returns first TRUE position, or 1 if all FALSE.
-#     # Here x comes from intersect(x2, x_lag), so matches should exist.
-#     i1 = np.array([np.argmax((x1 == u).astype(int)) for u in (x + lag)], dtype=int)
-#     i2 = np.array([np.argmax((x2 == u).astype(int)) for u in x], dtype=int)
-
-#     x1m = x1[i1]
-#     y1m = y1[i1]
-#     x2m = x2[i2]
-#     y2m = y2[i2]
-
-#     r1 = _loess_residuals_rstyle(x1m, y1m)
-#     r2 = _loess_residuals_rstyle(x2m, y2m)
-
-#     # R:
-#     # Xts <- ts.intersect(as.ts(r1), as.ts(r2))
-#     # acf(... lag.max = 0, type = "correlation")
-#     #
-#     # For lag.max=0 on 2 aligned series, this reduces to contemporaneous correlation.
-#     ok = np.isfinite(r1) & np.isfinite(r2)
-#     r1 = r1[ok]
-#     r2 = r2[ok]
-
-#     if len(r1) == 0 or len(r2) == 0:
-#         acf_val = np.nan
-#     elif len(r1) == 1 or len(r2) == 1:
-#         acf_val = np.nan
-#     else:
-#         try:
-#             acf_val = float(np.corrcoef(r1, r2)[0, 1])
-#         except Exception:
-#             acf_val = np.nan
-
-#     return pd.DataFrame({"acf": [acf_val], "lag": [lag]})
-
-
-def test_crosscor_for_well(chem_rs, well, term=1, lag=0):
-    sub = chem_rs[(chem_rs["NAME"] == well) & (chem_rs["TERM"] == term)].copy()
-    full = chem_rs[chem_rs["NAME"] == well].copy()
-
-    x1 = _to_event_numeric_rstyle(sub.loc[sub["VAL"].notna(), "EVENT"])
-    x2 = _to_event_numeric_rstyle(full["EVENT"])
-    y1 = sub.loc[sub["VAL"].notna(), "VAL"].to_numpy()
-    y2 = full["INTERP"].to_numpy()
-
-    out = crosscor_debug_rstyle(x1, y1, x2, y2, lag=lag)
-    return out
-
-
-# def crosscor_debug_rstyle(x1, y1, x2, y2, lag=0):
-#     lag = int(round(lag))
-
-#     x1 = np.asarray(x1)
-#     y1 = np.asarray(y1, dtype=float)
-#     x2 = np.asarray(x2)
-#     y2 = np.asarray(y2, dtype=float)
-
-#     x_lag = x1 - lag
-#     x = np.intersect1d(x2, x_lag)
-
-#     i1 = np.array([np.argmax((x1 == u).astype(int)) for u in (x + lag)], dtype=int)
-#     i2 = np.array([np.argmax((x2 == u).astype(int)) for u in x], dtype=int)
-
-#     x1m = x1[i1]
-#     y1m = y1[i1]
-#     x2m = x2[i2]
-#     y2m = y2[i2]
-
-#     r1 = _loess_residuals_rstyle(x1m, y1m)
-#     r2 = _loess_residuals_rstyle(x2m, y2m)
-
-#     ok = np.isfinite(r1) & np.isfinite(r2)
-
-#     if ok.sum() < 2:
-#         acf_val = np.nan
-#     else:
-#         acf_val = float(np.corrcoef(r1[ok], r2[ok])[0, 1])
-
-#     return {
-#         "x1m": x1m,
-#         "y1m": y1m,
-#         "x2m": x2m,
-#         "y2m": y2m,
-#         "r1": r1,
-#         "r2": r2,
-#         "acf": acf_val,
-#         "lag": lag,
-#     }
-
-
 def crosscor_r_bridge(x1, y1, x2, y2, lag, r_script_path):
     with tempfile.TemporaryDirectory() as tmpdir:
         infile = os.path.join(tmpdir, "in.csv")
@@ -1208,6 +1067,9 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
                 "beta_intercept": np.nan,
                 "beta_interp": np.nan,
                 "beta_event": np.nan,
+                "se_intercept": np.nan,
+                "se_interp": np.nan,
+                "se_event": np.nan,
                 "beta_logSigma": np.nan,
                 "p_interp": np.nan,
                 "p_event": np.nan,
@@ -1275,6 +1137,9 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
             "beta_intercept": coef[0] if len(coef) > 0 else np.nan,
             "beta_interp": coef[1] if len(coef) > 1 else np.nan,
             "beta_event": coef[2] if len(coef) > 2 else np.nan,
+            "se_intercept": ct.get("(Intercept)", {}).get("se", np.nan),
+            "se_interp": ct.get("INTERP", {}).get("se", np.nan),
+            "se_event": ct.get("EVENT", {}).get("se", np.nan),
             "beta_logSigma": coef[-1] if len(coef) > 0 else np.nan,
             "p_interp": ct.get("INTERP", {}).get("p", np.nan),
             "p_event": ct.get("EVENT", {}).get("p", np.nan),
@@ -1312,6 +1177,9 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
                 "beta_intercept": np.nan,
                 "beta_interp": np.nan,
                 "beta_event": np.nan,
+                "se_intercept": np.nan,
+                "se_interp": np.nan,
+                "se_event": np.nan,
                 "beta_logSigma": np.nan,
                 "p_interp": np.nan,
                 "p_event": np.nan,
@@ -1376,6 +1244,9 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
                 coef[1] if INDEP[0] == "INTERP" and len(coef) > 1 else np.nan
             ),
             "beta_event": coef[1] if INDEP[0] == "EVENT" and len(coef) > 1 else np.nan,
+            "se_intercept": ct.get("(Intercept)", {}).get("se", np.nan),
+            "se_interp": ct.get("INTERP", {}).get("se", np.nan),
+            "se_event": ct.get("EVENT", {}).get("se", np.nan),
             "beta_logSigma": coef[-1] if len(coef) > 0 else np.nan,
             "p_interp": ct.get("INTERP", {}).get("p", np.nan),
             "p_event": ct.get("EVENT", {}).get("p", np.nan),

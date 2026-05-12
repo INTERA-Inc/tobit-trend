@@ -12,6 +12,7 @@ class TrendConfig:
     # global settings
     run_ver: str
     output_dir: Path
+    selected_wells: list[str]
 
     # run_calculate_distance - script00
     well_info_well: Path
@@ -69,6 +70,7 @@ class TrendConfig:
             # global settings
             run_ver=raw["global_settings"]["run_ver"],
             output_dir=Path(raw["global_settings"]["output_dir"]),
+            selected_wells=list(raw["global_settings"].get("selected_wells", [])),
             # run_calculate_distance - script00
             well_info_well=Path(raw["calculate_distance"]["well_info_well"]),
             gauge_locs=Path(raw["calculate_distance"]["gauge_locs"]),

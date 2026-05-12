@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2, t as student_t
 
-
 # --------------------------------------------------------------------------------------
 # R S4 class ports
 # --------------------------------------------------------------------------------------
@@ -253,37 +252,6 @@ def _build_design(df: pd.DataFrame, indep: List[str]) -> np.ndarray:
     return np.column_stack(cols)
 
 
-class LMFit:
-    def __init__(
-        self,
-        coefficients,
-        residuals,
-        fitted_values,
-        df_residual,
-        vcov,
-        llf,
-        terms,
-        X,
-        y,
-    ):
-        self.coefficients = coefficients
-        self.residuals = residuals
-        self.fitted_values = fitted_values
-        self.df_residual = df_residual
-        self.vcov = vcov
-        self.llf = llf
-        self.terms = terms
-        self.X = X
-        self.y = y
-
-    def summary_coefficients(self) -> np.ndarray:
-        se = np.sqrt(np.diag(self.vcov))
-        tvals = self.coefficients / se
-        pvals = 2.0 * student_t.sf(np.abs(tvals), self.df_residual)
-        out = np.column_stack([self.coefficients, se, tvals, pvals])
-        return out
-
-
 def _parse_formula(formula_text: str):
     lhs, rhs = formula_text.split("~", 1)
     lhs = lhs.strip()
@@ -363,7 +331,7 @@ def run_ols_formula(data: pd.DataFrame, formula_text: str) -> LMFit:
     rss = float(np.sum(resid**2))
     sigma2 = rss / df_residual if df_residual > 0 else np.nan
 
-    xtx_inv = np.linalg.inv(X.T @ X)
+    xtx_inv = np.linalg.pinv(X.T @ X)
     vcov = sigma2 * xtx_inv if np.isfinite(sigma2) else np.full((p, p), np.nan)
 
     if n > 0 and rss > 0:
@@ -809,6 +777,9 @@ def flatten_water_level_trends(
 ) -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
 
+    def _n_obs(ts: TrendSummary) -> int | float:
+        return len(ts.RES) if len(np.atleast_1d(ts.RES)) > 0 else np.nan
+
     def _scalar_or_nan(x):
         arr = np.atleast_1d(x)
         if arr.size == 0:
@@ -852,7 +823,10 @@ def flatten_water_level_trends(
                     "TS": ts.TS,
                     "MINDATE": ts.MINDATE,
                     "p_trend": _scalar_or_nan(ts.p_trend),
+                    "p_interp": _sum_value(ts, 1, 3),
+                    "p_event": _sum_value(ts, 2, 3),
                     "df": _scalar_or_nan(ts.df),
+                    "n_obs": _n_obs(ts),
                     "LAG": _scalar_or_nan(ts.LAG),
                     "SUM_rows": (
                         ts.SUM.shape[0]
@@ -864,9 +838,9 @@ def flatten_water_level_trends(
                         if isinstance(ts.SUM, np.ndarray) and ts.SUM.ndim == 2
                         else np.nan
                     ),
-                    "coef1": _sum_value(ts, 0, 0),
-                    "coef2": _sum_value(ts, 1, 0),
-                    "coef3": _sum_value(ts, 2, 0),
+                    "beta_intercept": _sum_value(ts, 0, 0),
+                    "beta_interp": _sum_value(ts, 1, 0),
+                    "beta_event": _sum_value(ts, 2, 0),
                     "CLASS": "Trend_Summary",
                     "COD": _flatten_dt_value(ts.COD),
                     "AIC": _flatten_dt_value(ts.AIC),

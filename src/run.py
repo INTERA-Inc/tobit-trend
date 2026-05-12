@@ -1,7 +1,6 @@
 import pandas as pd
 import pyarrow.parquet as pq
 from pathlib import Path
-from tqdm import tqdm
 
 # loading tobit workflow config
 from config import TrendConfig
@@ -19,7 +18,6 @@ from preprocessing.water_level_trends_03 import (
 )
 from preprocessing.tobit_CR_prep_04 import run_script04_prep
 from model.tobit_CR_04_mod import do_tobit_rstyle
-
 
 # from groundwater_trends.export import write_csv, compare_with_r
 
@@ -48,9 +46,32 @@ def _build_output_dir(
     return out_dir
 
 
+def _normalize_selected_wells(selected_wells):
+    return [str(w).strip() for w in selected_wells if str(w).strip()]
+
+
+def filter_by_selected_wells(df, selected_wells, col="NAME"):
+    if not selected_wells:
+        return df
+    if col not in df.columns:
+        raise KeyError(f"Cannot filter selected_wells: missing column {col!r}")
+    return df.loc[df[col].astype(str).str.strip().isin(selected_wells)].copy()
+
+
 def main():
     # Load config
     config = TrendConfig.from_toml("configs/trend_config.toml")
+    # optional well selection - if specified, will filter to only these wells for all steps
+    selected_wells = _normalize_selected_wells(config.selected_wells)
+    well = load_table(config.well_info_well)
+    screen = load_table(config.well_info_screen)
+    well = filter_by_selected_wells(well, selected_wells)
+    screen = filter_by_selected_wells(screen, selected_wells)
+    if selected_wells:
+        found = set(well["NAME"].astype(str).str.strip())
+        missing = sorted(set(selected_wells) - found)
+        if missing:
+            raise ValueError(f"selected_wells not found in WELL.csv: {missing}")
     # Build output directory
     output_dir = _build_output_dir(config.output_dir, config.run_ver)
     print(f"Running Tobit Trend Analysis with output_dir={output_dir}...")
@@ -59,7 +80,7 @@ def main():
     #############################
     print("Running distance calculations...")
     dist, stagedist = run_calculate_distance(
-        well=config.well_info_well,
+        well=well,
         gauge=config.gauge_locs,
         river_shapefile=config.river_shapefile,
     )
@@ -86,9 +107,9 @@ def main():
         chem_files=config.chemistry_files,
         stage_comb=load_table(config.river_stage_file),
         dist=dist,  # from script 00
-        stagedist=stagedist,  # from script 00  
-        well=load_table(config.well_info_well),
-        screen=load_table(config.well_info_screen),
+        stagedist=stagedist,  # from script 00
+        well=well,
+        screen=screen,
         yr=config.CHEM_YEAR,
         cfg=chem_cfg,
     )
@@ -100,9 +121,8 @@ def main():
     ################################
     print("Running water level import...")
     wl = load_table(config.wl_file)
+    wl = filter_by_selected_wells(wl, selected_wells)
     river_stage = load_table(config.river_stage_file)
-    well = load_table(config.well_info_well)
-    screen = load_table(config.well_info_screen)
 
     wl_rs = run_water_level_import(
         wl=wl,
@@ -114,7 +134,7 @@ def main():
         yr=config.WL_YEAR,
     )
     wl_rs.to_parquet(output_dir / "WL_TrendData_2024.parquet", index=False)
-    wl_rs = load_table(output_dir / "WL_TrendData_2024.parquet")  # test load
+    # wl_rs = load_table(output_dir / "WL_TrendData_2024.parquet")  # test load
     ############################
     # 03 - WATER LEVEL TRENDS  #
     ############################
@@ -130,7 +150,7 @@ def main():
     )
     wl_trends_df = flatten_water_level_trends(res)
     wl_trends_df.to_parquet(output_dir / "WL_trends_2024.parquet", index=False)
-    chem_rs = load_table(output_dir / "Cr_TrendData_2024.parquet")  # test load
+    # chem_rs = load_table(output_dir / "Cr_TrendData_2024.parquet")  # test load
     # wl_trends_df = load_table(output_dir / "WLTrends_flat.csv")  # test load
     ########################################
     # 04 - CHEMISTRY TOBIT TREND ANALYSIS  #
@@ -170,7 +190,7 @@ def main():
     )
 
     df = pd.DataFrame(res)
-    df.to_csv(output_dir / "TobitResults.csv", index=False)
+    df.to_csv(output_dir / f"TTA_Results_{config.run_ver}.csv", index=False)
 
     ############################
     # 05 - REPORTING/PLOTTING  #
