@@ -66,9 +66,9 @@ KX_KW_KR4 = "2009-04-01"
 date1 = "2016-05-16"
 date2 = "2017-04-12"
 
-
-[run] # TBC 
-save_csv = true
-save_plots = true
-save_diagnostics = true
-compare_to_r = true
+[reporting]
+save_reports = true
+gis_river_shapefile = "input/GIS/HIGHRIV.shp"
+gis_roads_shapefile = "input/GIS/ROADS.shp"
+gis_ou_shapefile = "input/GIS/OU.shp"
+map_crs = "EPSG:2926"

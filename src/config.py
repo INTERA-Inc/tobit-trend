@@ -61,6 +61,13 @@ class TrendConfig:
     dep: str
     indep: list[str]
 
+    # reporting
+    save_reports: bool
+    gis_river_shapefile: Path
+    gis_roads_shapefile: Path
+    gis_ou_shapefile: Path
+    map_crs: str
+
     @classmethod
     def from_toml(cls, path: str | Path) -> "TrendConfig":
         with open(path, "rb") as f:
@@ -117,6 +124,12 @@ class TrendConfig:
             # model
             dep=raw["model"]["dep"],
             indep=list(raw["model"]["indep"]),
+            # reporting
+            save_reports=bool(raw.get("reporting", {}).get("save_reports", True)),
+            gis_river_shapefile=Path(raw["reporting"]["gis_river_shapefile"]),
+            gis_roads_shapefile=Path(raw["reporting"]["gis_roads_shapefile"]),
+            gis_ou_shapefile=Path(raw["reporting"]["gis_ou_shapefile"]),
+            map_crs=raw.get("reporting", {}).get("map_crs", "EPSG:2926"),
             # dist_file=Path(raw["prep_wl"]["dist_file"]),
             # stagedist_file=Path(raw["prep_wl"]["stagedist_file"]),
             # cr_trend_parquet=Path(raw["prep_wl"]["cr_trend_parquet"]),

@@ -5,6 +5,16 @@ from pathlib import Path
 # loading tobit workflow config
 from config import TrendConfig
 
+# load utils
+from utils import (
+    load_table,
+    build_output_dir,
+    normalize_selected_wells,
+    filter_by_selected_wells,
+    assert_only_selected_wells,
+    assert_not_empty,
+)
+
 # loading tobit workflow scripts
 from preprocessing.calculate_distance_00 import run_calculate_distance
 from preprocessing.chemistry_import_01 import (
@@ -18,51 +28,14 @@ from preprocessing.water_level_trends_03 import (
 )
 from preprocessing.tobit_CR_prep_04 import run_script04_prep
 from model.tobit_CR_04_mod import do_tobit_rstyle
-
-# from groundwater_trends.export import write_csv, compare_with_r
-
-
-def load_table(path: str) -> pd.DataFrame:
-    """Load tables, CSV or Parquet format."""
-    if str(path).endswith(".parquet"):
-        return pq.read_table(path).to_pandas()
-    if str(path).endswith(".csv"):
-        return pd.read_csv(path, low_memory=False)
-    raise ValueError(f"Unsupported input format: {path}")
-
-
-def _build_output_dir(
-    output_dir: str | Path | None, run_ver: str | None
-) -> Path | None:
-    """Build output directory path, creating it if it doesn't exist."""
-    if output_dir is None:
-        return None
-
-    out_dir = Path(output_dir)
-    if run_ver is not None:
-        out_dir = out_dir / str(run_ver)
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir
-
-
-def _normalize_selected_wells(selected_wells):
-    return [str(w).strip() for w in selected_wells if str(w).strip()]
-
-
-def filter_by_selected_wells(df, selected_wells, col="NAME"):
-    if not selected_wells:
-        return df
-    if col not in df.columns:
-        raise KeyError(f"Cannot filter selected_wells: missing column {col!r}")
-    return df.loc[df[col].astype(str).str.strip().isin(selected_wells)].copy()
+from reporting.generate_report import generate_report
 
 
 def main():
     # Load config
     config = TrendConfig.from_toml("configs/trend_config.toml")
     # optional well selection - if specified, will filter to only these wells for all steps
-    selected_wells = _normalize_selected_wells(config.selected_wells)
+    selected_wells = normalize_selected_wells(config.selected_wells)
     well = load_table(config.well_info_well)
     screen = load_table(config.well_info_screen)
     well = filter_by_selected_wells(well, selected_wells)
@@ -73,8 +46,9 @@ def main():
         if missing:
             raise ValueError(f"selected_wells not found in WELL.csv: {missing}")
     # Build output directory
-    output_dir = _build_output_dir(config.output_dir, config.run_ver)
+    output_dir = build_output_dir(config.output_dir, config.run_ver)
     print(f"Running Tobit Trend Analysis with output_dir={output_dir}...")
+
     #############################
     # 00 - CALCULATE DISTANCE   #
     #############################
@@ -86,6 +60,7 @@ def main():
     )
     dist.to_csv(output_dir / "DIST.csv", index=False)
     stagedist.to_csv(output_dir / "STAGEDIST.csv", index=False)
+
     ##############################
     # 01 - PREP CHEMISTRY DATA   #
     ##############################
@@ -135,6 +110,7 @@ def main():
     )
     wl_rs.to_parquet(output_dir / "WL_TrendData_2024.parquet", index=False)
     # wl_rs = load_table(output_dir / "WL_TrendData_2024.parquet")  # test load
+
     ############################
     # 03 - WATER LEVEL TRENDS  #
     ############################
@@ -152,6 +128,7 @@ def main():
     wl_trends_df.to_parquet(output_dir / "WL_trends_2024.parquet", index=False)
     # chem_rs = load_table(output_dir / "Cr_TrendData_2024.parquet")  # test load
     # wl_trends_df = load_table(output_dir / "WLTrends_flat.csv")  # test load
+
     ########################################
     # 04 - CHEMISTRY TOBIT TREND ANALYSIS  #
     ########################################
@@ -195,6 +172,23 @@ def main():
     ############################
     # 05 - REPORTING/PLOTTING  #
     ############################
+    no_rs = load_table(config.no_rs_csv)
+    generate_report(
+        output_dir=output_dir,
+        wells=well,
+        dist=dist,
+        wl_trends=wl_trends_df,
+        chem_trends=df,
+        wl_rs=wl_rs,
+        chem_rs=chem_rs,
+        no_rs=no_rs,
+        river_shapefile=config.gis_river_shapefile,
+        roads_shapefile=config.gis_roads_shapefile,
+        ou_shapefile=config.gis_ou_shapefile,
+        ous=config.ou_keep,
+        map_crs=config.map_crs,
+        run_ver=config.run_ver,
+    )
 
 
 if __name__ == "__main__":
