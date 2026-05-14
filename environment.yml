@@ -1,0 +1,20 @@
+name: tta
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas
+  - pyarrow
+  - numpy
+  - scipy
+  - matplotlib
+  - scikit-learn
+  - statsmodels
+  - openpyxl
+  - tqdm
+  - pathlib
+  - geopandas
+  - plotly
+  - gdal
+  - pyogrio
+  - ipykernel

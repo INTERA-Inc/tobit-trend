@@ -19,9 +19,9 @@ project-root/
 │   │   ├── chemistry_import_01.py
 │   │   ├── water_level_import_02.py
 │   │   ├── water_level_trends_03.py
-│   │   └── tobit_CR_prep_04.py
+│   │   └── tobit_prep_04.py
 │   ├── model/
-│   │   └── tobit_CR_04_mod.py
+│   │   └── tobit_model_04_mod.py
 │   └── reporting/
 │       └── generate_report.py
 └── environment.yml
@@ -71,7 +71,7 @@ STAGEDIST.csv
 Cr_TrendData_2024.parquet
 WL_TrendData_2024.parquet
 WL_trends_2024.parquet
-TobitResults.csv
+TTA_results_<run_id>.csv
 TobitRegression_WLlag_<OU>_<run_version>.pdf
 tta.log
 ```
@@ -99,7 +99,7 @@ Calculates well distance to the river and distance to river-stage gauges. These 
 
 ### Step 01 — Chemistry preprocessing
 
-Imports and cleans chemistry data. It consolidates the chromium analytes, handles non-detect flags, applies chemistry-specific exclusions, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
+Imports and processes chemistry data. It handles non-detect flags, applies filters, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
 
 ### Step 02 — Water-level preprocessing
 
