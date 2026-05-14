@@ -1,63 +1,118 @@
-# Script 04 tobit analysis - see folder (04_CromTobitAnalysis)
-Script 04 is the core trend-analysis step in the workflow
-- preproccesess chemistry and water-level data
-- assign trend periods (TERM) using cutoffs, special rules/overrides
-- model on: time only or time + river stage (with lag) <br>
+# Tobit Trend Analysis Tool
 
-Results may be: <br>
-- a single trend summary object, or
-- a list of trend summary objects when multiple TERM periods exist
+Python workflow for groundwater chemistry and water-level trend analysis. The tool reads all input paths and workflow settings from a TOML configuration file, runs the analysis steps sequentially, and writes processed data, model outputs, reports, and a run log to the configured output directory.
 
-# Script 05 plotting summary - see folder (05_ReportFigures)
-Note: all R code functions/helpers used in <mark>05_ReportFigures.R</mark> saved in <mark>./r_function_extract</mark><br>
-Script 05 is the reporting layer for the Tobit workflow.<br>
-Uses trend-analysis data from Script 04, water-level trend data, well metadata, and GIS base data, then produces:
-- one PDF report per OU
-- one page per well with summary table, map and plots
+## Repository layout
 
-## Main workflow
-1. Load trend and water-level data
-2. Load well metadata, GIS base layers
-3. Group wells by OU
-4. For each well, extract:
-   - analyte name and units
-   - well coordinates / OU
-   - whether river stage is used
-   - associated water-level object
-   - lag(s) / regression info for each TERM
-5. Choose one of two page templates:
-   - `pltReport(...)` if trend / lag output exists
-   - `pltPlaceholder(...)` if no regression analysis was performed
+```text
+project-root/
+├── configs/
+│   └── trend_config.toml
+├── input/
+│   └── ...
+├── src/
+│   ├── run.py
+│   ├── config.py
+│   ├── utils.py
+│   ├── preprocessing/
+│   │   ├── calculate_distance_00.py
+│   │   ├── chemistry_import_01.py
+│   │   ├── water_level_import_02.py
+│   │   ├── water_level_trends_03.py
+│   │   └── tobit_CR_prep_04.py
+│   ├── model/
+│   │   └── tobit_CR_04_mod.py
+│   └── reporting/
+│       └── generate_report.py
+└── environment.yml
+```
 
-## Page layout 
-### Full report page (`pltReport`)
-The page contains:
-- header
-- header summary table
-- location map
-- legend
-- top time-series panel: observed water level + river stage
-- middle panel: observed chromium concentrations + river stage
-- lower-middle panel: observed + model-predicted concentrations
-- bottom panel: regression summary / significance display
+## Installation
 
-### Placeholder page (`pltPlaceholder`) - if no trend reported
-Uses the same upper layout:
-- header
-- header summary table
-- location map
-- legend
-- optional water-level panel
-- chromium observations panel
+Create the conda environment from the supplied YAML file:
 
-The bottom plot area is replaced with a simple **No Regression Analysis Performed** message.
+```bash
+conda env create -f environment.yml
+```
 
-## Notes
-- Chromium observations are plotted on a log scale
-- Non-detects are highlighted separately (red triangle)
-- Each trend TERM is shown with its own colour / symbol styling
-- If water-level data exist, the top panel also shows the screened interval
-- River stage is omitted for wells listed in `NoRS`
-- Script 05 creates a report summary table for each well using `tblSummary(...)`
+Activate the environment:
+
+```bash
+conda activate tta
+```
+
+## Configuration
+
+Edit the TOML file before running:
+
+```text
+configs/trend_config.toml
+```
+
+## Running the workflow
+
+Run the tool from the **project root**
+
+```bash
+python src/run.py configs/trend_config.toml
+```
+
+The paths in the TOML are expected to be relative to the project root.
+
+## Outputs
+
+Outputs are written to the configured output directory and run-version subfolder.
+
+Typical outputs include:
+
+```text
+DIST.csv
+STAGEDIST.csv
+Cr_TrendData_2024.parquet
+WL_TrendData_2024.parquet
+WL_trends_2024.parquet
+TobitResults.csv
+TobitRegression_WLlag_<OU>_<run_version>.pdf
+tta.log
+```
+
+`tta.log` contains progress messages, warnings, errors, and detailed debug information from the run.
 
 
+## Code walkthrough
+
+### `run.py`
+
+Main workflow entry point. It:
+
+1. reads the TOML configuration;
+2. creates the output directory;
+3. applies global well filters and optional `selected_wells`;
+4. runs each workflow step in sequence;
+5. writes outputs;
+6. launches reporting;
+7. writes progress and errors to `tta.log`.
+
+### Step 00 — Distance calculations
+
+Calculates well distance to the river and distance to river-stage gauges. These results are used later to assign river-stage covariates and populate report metadata.
+
+### Step 01 — Chemistry preprocessing
+
+Imports and cleans chemistry data. It consolidates the chromium analytes, handles non-detect flags, applies chemistry-specific exclusions, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
+
+### Step 02 — Water-level preprocessing
+
+Imports and processes water-level data. It joins river-stage data, well metadata, and screen intervals, creating the water-level dataset used for lag and trend analysis.
+
+### Step 03 — Water-level trend analysis
+
+Estimates the relationship between groundwater elevation, river stage and time. It calculates lag, number of observations, and p-values for the trend, river-stage term, and date term.
+
+### Step 04 — Chemistry Tobit preparation and modelling
+
+Prepares chemistry data for censored regression by applying trend breaks, assigning trend terms, handling no-river-stage wells and fitting Tobit models.
+
+### Step 05 — Reporting
+
+Generates OU-level PDF reports.

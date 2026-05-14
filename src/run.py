@@ -13,6 +13,9 @@ from utils import (
     filter_by_selected_wells,
     assert_only_selected_wells,
     assert_not_empty,
+    setup_logger,
+    apply_well_filters,
+    parse_args,
 )
 
 # loading tobit workflow scripts
@@ -26,33 +29,66 @@ from preprocessing.water_level_trends_03 import (
     run_water_level_trend_analysis,
     flatten_water_level_trends,
 )
-from preprocessing.tobit_CR_prep_04 import run_script04_prep
-from model.tobit_CR_04_mod import do_tobit_rstyle
+from preprocessing.tobit_prep_04 import run_script04_prep
+from model.tobit_model_04 import do_tobit_rstyle
 from reporting.generate_report import generate_report
 
 
 def main():
+    args = parse_args()
+    config = TrendConfig.from_toml(args.config)
     # Load config
-    config = TrendConfig.from_toml("configs/trend_config.toml")
+    # config = TrendConfig.from_toml("configs/trend_config.toml")
+    # Build output directory
+    output_dir = build_output_dir(config.output_dir, config.run_ver)
+    # Set up logging
+    logger = setup_logger(output_dir)
     # optional well selection - if specified, will filter to only these wells for all steps
     selected_wells = normalize_selected_wells(config.selected_wells)
+    # well filtering
     well = load_table(config.well_info_well)
     screen = load_table(config.well_info_screen)
+
+    # Permanent project-wide inclusion/exclusion filters.
+    well = apply_well_filters(
+        well=well,
+        filter_cols=config.well_filter_cols,
+        filter_modes=config.well_filter_modes,
+        filter_values=config.well_filter_values,
+    )
+
+    if well.empty:
+        raise ValueError("Global well filtering removed all wells.")
+
+    # Apply selected_wells after project-wide filters.
     well = filter_by_selected_wells(well, selected_wells)
-    screen = filter_by_selected_wells(screen, selected_wells)
+
+    if well.empty:
+        raise ValueError("selected_wells filtering removed all wells.")
+
+    screen = screen.loc[
+        screen["NAME"].astype(str).isin(well["NAME"].astype(str))
+    ].copy()
+    logger.info("Global well filter retained %s wells", well["NAME"].nunique())
+    logger.debug("Retained wells: %s", sorted(well["NAME"].astype(str).unique()))
     if selected_wells:
         found = set(well["NAME"].astype(str).str.strip())
         missing = sorted(set(selected_wells) - found)
         if missing:
             raise ValueError(f"selected_wells not found in WELL.csv: {missing}")
-    # Build output directory
-    output_dir = build_output_dir(config.output_dir, config.run_ver)
-    print(f"Running Tobit Trend Analysis with output_dir={output_dir}...")
+    # print(f"Running Tobit Trend Analysis with output_dir={output_dir}...")
+    logger.info("Starting Tobit Trend Analysis workflow")
+    logger.info(f"Output directory: {output_dir}")
+    logger.info(f"Run version id: {config.run_ver}")
+    logger.info(
+        f"Selected wells: {config.selected_wells if config.selected_wells else 'ALL'}"
+    )
 
     #############################
     # 00 - CALCULATE DISTANCE   #
     #############################
-    print("Running distance calculations...")
+    # print("Running distance calculations...")
+    logger.info("Step 00: Running distance calculations")
     dist, stagedist = run_calculate_distance(
         well=well,
         gauge=config.gauge_locs,
@@ -60,19 +96,24 @@ def main():
     )
     dist.to_csv(output_dir / "DIST.csv", index=False)
     stagedist.to_csv(output_dir / "STAGEDIST.csv", index=False)
+    logger.info(
+        f"Step 00 complete: DIST rows={len(dist)}, STAGEDIST rows={len(stagedist)}"
+    )
 
     ##############################
     # 01 - PREP CHEMISTRY DATA   #
     ##############################
-    print("Running chemistry import...")
+    # print("Running chemistry import...")
+    logger.info("Step 01: Running chemistry import")
     chem_cfg = ChemistryImportConfig(
         chromium_analyte=config.chromium_analyte,
         hexchrom_analyte=config.hexchrom_analyte,
         filtered_keep_value=config.filtered_keep_value,
         combined_analyte_name=config.combined_analyte_name,
         mdl_sub_if_nonpositive_missing=config.mdl_sub_if_nonpositive_missing,
-        ou_keep=config.ou_keep,
-        status_exclude=config.status_exclude,
+        well_filter_cols=config.well_filter_cols,
+        well_filter_modes=config.well_filter_modes,
+        well_filter_values=config.well_filter_values,
         reviewq_remove_patterns=config.reviewq_remove_patterns,
         collection_purpose_exclude=config.collection_purpose_exclude,
         trend_min_year=config.trend_min_year,
@@ -88,13 +129,16 @@ def main():
         yr=config.CHEM_YEAR,
         cfg=chem_cfg,
     )
-
+    logger.info(
+        f"Step 01 complete: chem_rs rows={len(chem_rs)}, wells={chem_rs['NAME'].nunique()}"
+    )
     chem_rs.to_parquet(output_dir / "Cr_TrendData_2024.parquet", index=False)
+    chem_rs.to_csv(output_dir / "Cr_TrendData_2024.csv", index=False)
 
     ################################
     # 02 - PREP WATER LEVEL DATA   #
     ################################
-    print("Running water level import...")
+    logger.info("Step 02: Running water level import")
     wl = load_table(config.wl_file)
     wl = filter_by_selected_wells(wl, selected_wells)
     river_stage = load_table(config.river_stage_file)
@@ -110,11 +154,14 @@ def main():
     )
     wl_rs.to_parquet(output_dir / "WL_TrendData_2024.parquet", index=False)
     # wl_rs = load_table(output_dir / "WL_TrendData_2024.parquet")  # test load
+    logger.info(
+        f"Step 02 complete: wl_rs rows={len(wl_rs)}, wells={wl_rs['NAME'].nunique()}"
+    )
 
     ############################
     # 03 - WATER LEVEL TRENDS  #
     ############################
-    print("Running water level trend analysis...")
+    logger.info("Step 03: Running water level trend analysis")
     res = run_water_level_trend_analysis(
         wl_rs=wl_rs,
         MAXLAG=config.maxlag,
@@ -128,11 +175,12 @@ def main():
     wl_trends_df.to_parquet(output_dir / "WL_trends_2024.parquet", index=False)
     # chem_rs = load_table(output_dir / "Cr_TrendData_2024.parquet")  # test load
     # wl_trends_df = load_table(output_dir / "WLTrends_flat.csv")  # test load
+    logger.info(f"Step 03 complete: wl_trends rows={len(wl_trends_df)}")
 
     ########################################
     # 04 - CHEMISTRY TOBIT TREND ANALYSIS  #
     ########################################
-    print("Running chemistry tobit prep...")
+    logger.info("Step 04: Running chemistry Tobit trend analysis")
     chem_rs, ulags, newrs_names = run_script04_prep(
         chem=chem_rs,  # from script 01
         wl_trends=wl_trends_df,  # from script 03
@@ -147,11 +195,11 @@ def main():
         KW_DATE2=config.KW_DATE2,
     )
 
-    print("Prepared rows:", len(chem_rs))
-    print("Unique wells:", chem_rs["NAME"].nunique())
-    print("ULAG wells:", len(ulags))
-    print("NEWRS wells:", len(newrs_names))
-    print("Done with prep, starting model...")
+    logger.debug(f"Prepared rows: {len(chem_rs)}")
+    logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
+    logger.debug(f"ULAG wells: {len(ulags)}")
+    logger.debug(f"NEWRS wells: {len(newrs_names)}")
+    logger.info("Done with prep, starting model...")
 
     res = do_tobit_rstyle(
         x=chem_rs,
@@ -166,26 +214,32 @@ def main():
         newrs_names=newrs_names,
     )
 
-    df = pd.DataFrame(res)
-    df.to_csv(output_dir / f"TTA_Results_{config.run_ver}.csv", index=False)
+    df_tobit = pd.DataFrame(res)
+    df_tobit.to_csv(output_dir / f"TTA_Results_{config.run_ver}.csv", index=False)
+    logger.info(f"Step 04 complete: Tobit results rows={len(df_tobit)}")
+    logger.info(
+        f"Step 04 complete: Results written to {output_dir / f'TTA_Results_{config.run_ver}.csv'}"
+    )
 
     ############################
     # 05 - REPORTING/PLOTTING  #
     ############################
+    logger.info("Step 05: Running reporting")
     no_rs = load_table(config.no_rs_csv)
+    ous = sorted(well["OU"].dropna().astype(str).unique())
     generate_report(
         output_dir=output_dir,
         wells=well,
         dist=dist,
         wl_trends=wl_trends_df,
-        chem_trends=df,
+        chem_trends=df_tobit,  # from script 04
         wl_rs=wl_rs,
         chem_rs=chem_rs,
         no_rs=no_rs,
         river_shapefile=config.gis_river_shapefile,
         roads_shapefile=config.gis_roads_shapefile,
         ou_shapefile=config.gis_ou_shapefile,
-        ous=config.ou_keep,
+        ous=ous,
         map_crs=config.map_crs,
         run_ver=config.run_ver,
     )

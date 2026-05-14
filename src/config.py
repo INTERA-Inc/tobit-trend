@@ -23,13 +23,14 @@ class TrendConfig:
     chemistry_files: list[Path]
     river_stage_file: Path
     well_info_screen: Path
+    well_filter_cols: list[str]
+    well_filter_modes: list[str]
+    well_filter_values: list[list[str]]
     chromium_analyte: str
     hexchrom_analyte: str
     filtered_keep_value: str
     combined_analyte_name: str
     mdl_sub_if_nonpositive_missing: float
-    ou_keep: list[str]
-    status_exclude: list[str]
     reviewq_remove_patterns: list[str]
     collection_purpose_exclude: list[str]
     trend_min_year: int
@@ -83,24 +84,29 @@ class TrendConfig:
             gauge_locs=Path(raw["calculate_distance"]["gauge_locs"]),
             river_shapefile=Path(raw["calculate_distance"]["river_shapefile"]),
             # run_chemistry_import - script01
-            chemistry_files=[Path(p) for p in raw["prep_chem"]["chemistry_files"]],
-            river_stage_file=Path(raw["prep_chem"]["river_stage_file"]),
-            well_info_screen=Path(raw["prep_chem"]["well_info_screen"]),
-            chromium_analyte=raw["prep_chem"]["chromium_analyte"],
-            hexchrom_analyte=raw["prep_chem"]["hexchrom_analyte"],
-            filtered_keep_value=raw["prep_chem"]["filtered_keep_value"],
-            combined_analyte_name=raw["prep_chem"]["combined_analyte_name"],
+            chemistry_files=[Path(p) for p in raw["prep_chemistry"]["chemistry_files"]],
+            river_stage_file=Path(raw["prep_chemistry"]["river_stage_file"]),
+            well_info_screen=Path(raw["prep_chemistry"]["well_info_screen"]),
+            well_filter_cols=list(raw["prep_chemistry"].get("well_filter_cols", [])),
+            well_filter_modes=list(raw["prep_chemistry"].get("well_filter_modes", [])),
+            well_filter_values=[
+                list(v) for v in raw["prep_chemistry"].get("well_filter_values", [])
+            ],
+            chromium_analyte=raw["prep_chemistry"]["chromium_analyte"],
+            hexchrom_analyte=raw["prep_chemistry"]["hexchrom_analyte"],
+            filtered_keep_value=raw["prep_chemistry"]["filtered_keep_value"],
+            combined_analyte_name=raw["prep_chemistry"]["combined_analyte_name"],
             mdl_sub_if_nonpositive_missing=float(
-                raw["prep_chem"]["mdl_sub_if_nonpositive_missing"]
+                raw["prep_chemistry"]["mdl_sub_if_nonpositive_missing"]
             ),
-            ou_keep=list(raw["prep_chem"]["ou_keep"]),
-            status_exclude=list(raw["prep_chem"]["status_exclude"]),
-            reviewq_remove_patterns=list(raw["prep_chem"]["reviewq_remove_patterns"]),
+            reviewq_remove_patterns=list(
+                raw["prep_chemistry"]["reviewq_remove_patterns"]
+            ),
             collection_purpose_exclude=list(
-                raw["prep_chem"]["collection_purpose_exclude"]
+                raw["prep_chemistry"]["collection_purpose_exclude"]
             ),
-            trend_min_year=int(raw["prep_chem"]["trend_min_year"]),
-            CHEM_YEAR=int(raw["prep_chem"]["CHEM_YEAR"]),
+            trend_min_year=int(raw["prep_chemistry"]["trend_min_year"]),
+            CHEM_YEAR=int(raw["prep_chemistry"]["CHEM_YEAR"]),
             # run_water_level_import - script02
             wl_file=Path(raw["prep_wl"]["wl_file"]),
             WL_YEAR=int(raw["prep_wl"]["WL_YEAR"]),

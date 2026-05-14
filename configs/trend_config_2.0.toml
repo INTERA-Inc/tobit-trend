@@ -24,9 +24,9 @@ river_stage_file = "input/00_Data/STAGE_COMB.csv"
 well_info_screen = "input/00_Data/SCREEN.csv"
 
 ## WELL FILTERING 
-well_columns = ["OU", "STATUS"] # each well_column needs a mode (well_modes) and a list of values (well_values)
-well_modes = ["include", "exclude"] # either "include" or "exclude"
-well_values = [
+well_filter_cols = ["OU", "STATUS"] # each well_column needs a mode (well_modes) and a list of values (well_values)
+well_filter_modes  = ["include", "exclude"] # either "include" or "exclude"
+well_filter_values = [
   ["100-KR-4", "100-HR-3-D", "100-HR-3-H"], # List of operational units to keep
   ["DECOMMISSIONED-V", "DRILLING CANCELLED"] # List of well statuses to exclude
 ]

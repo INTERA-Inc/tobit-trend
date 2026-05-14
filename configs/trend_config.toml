@@ -5,15 +5,14 @@ version = "0.1.0"
 [global_settings]
 run_ver = "v6_051226"
 output_dir = "outputs"
-selected_wells = ["199-D1-1", "199-D4-103"] # Optional: if empty or omitted → process all wells
+selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
 
 [calculate_distance] # script00 - CALCULATE DISTANCE
 well_info_well = "input/00_Data/WELL.csv"
 gauge_locs = "input/00_Data/Trend_Analysis_Data/RiverGageLocations-2-21-2020.csv"
 river_shapefile = "input/00_Data/Trend_Analysis_Data/rivKrigeHigh.shp"
 
-[prep_chem] # script01 - PREP CHEMISTRY DATA
-#script01 - PREP CHEMISTRY DATA
+[prep_chemistry] # script01 - PREP CHEMISTRY DATA
 chemistry_files = [
   "input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt",
   "input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt",
@@ -21,13 +20,23 @@ chemistry_files = [
 ]
 river_stage_file = "input/00_Data/STAGE_COMB.csv"
 well_info_screen = "input/00_Data/SCREEN.csv"
+
+## WELL FILTERING 
+well_filter_cols = ["OU", "STATUS"] # each well_column needs a mode (well_modes) and a list of values (well_values)
+well_filter_modes  = ["include", "exclude"] # either "include" or "exclude"
+well_filter_values = [
+  ["100-KR-4", "100-HR-3-D", "100-HR-3-H"], # List of operational units to keep
+  ["DECOMMISSIONED-V", "DRILLING CANCELLED"] # List of well statuses to exclude
+]
+
+## CHROMIUM SELECTION - TO BE REMOVED
 chromium_analyte = "Chromium"  #analyte to filter chem database for
 hexchrom_analyte = "Hexavalent Chromium" 
 filtered_keep_value = "Y"
 combined_analyte_name = "Hex. Chromium and Fil. Chromium"
+
+## non-detect handling, etc.
 mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing
-ou_keep = ["100-KR-4", "100-HR-3-D", "100-HR-3-H"] # List of OUs to keep
-status_exclude = ["DECOMMISSIONED-V", "DRILLING CANCELLED"]
 reviewq_remove_patterns = ["Y", "R"]
 collection_purpose_exclude = ["IH", "C", "VAR", "VP", "RC", "WM", "S", "PE", "T", "PD", "CNF"] # list of COLLECTION_PURPOSE codes to remove
 trend_min_year = 2008

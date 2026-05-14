@@ -1377,11 +1377,25 @@ def compute_varcovar_rstyle(hessian0, x_std, y_std):
     H0 = np.asarray(hessian0, dtype=float)
     p = H0.shape[0]
 
-    tau = y_std["sigma"][0] / np.asarray(x_std["sigma"], dtype=float)
+    x_mu = np.asarray(x_std["mu"], dtype=float)
+    x_sigma = np.asarray(x_std["sigma"], dtype=float)
+    y_sigma = float(y_std["sigma"][0])
 
-    zero = np.zeros((p - 1, p), dtype=float)
-    top = np.concatenate([np.asarray(x_std["mu"], dtype=float), [0.0]])
-    u_inv = np.diag(np.concatenate([tau, [1.0]])) - np.vstack([top, zero])
+    tau = y_sigma / x_sigma
+
+    # Jacobian of original parameters with respect to standardized parameters.
+    #
+    # intercept = y_mu + y_sigma * beta0_std
+    #             - sum(beta_j_std * y_sigma * x_mu_j / x_sigma_j)
+    #
+    # slopes    = beta_j_std * y_sigma / x_sigma_j
+    #
+    # logSigma  = logSigma_std + log(y_sigma)
+    jac = np.diag(np.concatenate([tau, [1.0]]))
+
+    # Correct intercept row.
+    # The old code subtracted x_mu only; it must subtract tau * x_mu.
+    jac[0, : len(x_mu)] -= tau * x_mu
 
     eigvals, eigvecs = np.linalg.eigh(H0)
 
@@ -1390,7 +1404,8 @@ def compute_varcovar_rstyle(hessian0, x_std, y_std):
     e_inv[~bad] = 1.0 / eigvals[~bad]
 
     v = eigvecs @ np.diag(-e_inv) @ eigvecs.T
-    varcovar = u_inv @ v @ u_inv.T
+    varcovar = jac @ v @ jac.T
+
     return varcovar
 
 

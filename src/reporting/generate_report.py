@@ -12,6 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.patches as patches
 from typing import Tuple
 from pathlib import Path
+from tqdm import tqdm
 
 # Figure constants
 FIGURE_SIZE = (8.5, 11)
@@ -48,6 +49,37 @@ MARKER_FACE_COLORS = ["#ADD2BD", "#C9C5E0", "#B9B9B9", "#FFDC9B", "#9B9BEB"]
 MARKER_EDGE_COLORS = ["#2E8B57", "#756BB1", "#4D4D4D", "#FFA500", "#0000CD"]
 
 
+def _event_numeric_rstyle(series: pd.Series) -> np.ndarray:
+    dt = pd.to_datetime(series, errors="coerce").dt.floor("D")
+    return ((dt - pd.Timestamp("1970-01-01")) / pd.Timedelta(days=1)).to_numpy(
+        dtype=float
+    )
+
+
+def calculate_tobit_prediction(
+    chem_term: pd.DataFrame,
+    model_row: pd.Series,
+    log_mode: str = "log",
+) -> pd.Series:
+    event_num = _event_numeric_rstyle(chem_term["EVENT"])
+
+    linear = model_row["beta_intercept"] + model_row["beta_event"] * event_num
+
+    if pd.notna(model_row.get("beta_interp", np.nan)):
+        linear = linear + model_row["beta_interp"] * pd.to_numeric(
+            chem_term["INTERP"], errors="coerce"
+        ).to_numpy(dtype=float)
+
+    if log_mode == "log":
+        pred = np.exp(linear)
+    elif log_mode == "log10":
+        pred = 10**linear
+    else:
+        pred = linear
+
+    return pd.Series(pred, index=chem_term.index)
+
+
 def plt_report(
     OUs: list[str],
     wells: pd.DataFrame,
@@ -70,7 +102,12 @@ def plt_report(
 
         with PdfPages(output_file) as pdf:
             well: str
-            for well in wells_ou["NAME"]:
+            for well in tqdm(
+                wells_ou["NAME"],
+                desc=f"Reporting {ou}",
+                unit="well",
+                leave=True,
+            ):
                 wl_trends_well = ifile_wl_trends[ifile_wl_trends["KEY"] == well]
                 chem_trends_well = ifile_chem_trends.loc[
                     ifile_chem_trends["WELL"] == well, "ITER"
@@ -78,8 +115,6 @@ def plt_report(
                 gis_well = gis_wells[gis_wells["NAME"] == well]
                 wl_rs_well = ifile_wl_rs[ifile_wl_rs["NAME"] == well]
                 chem_rs_well = ifile_chem_rs[ifile_chem_rs["NAME"] == well]
-
-                print(f"Processing well {well} in {ou}\n")
 
                 page_fig = plt.figure(figsize=FIGURE_SIZE)
                 grid_spec = GridSpec(
@@ -127,6 +162,7 @@ def plt_report(
                     well,
                     chem_trends_well,
                     chem_rs_well,
+                    ifile_chem_trends,
                     page_fig,
                     grid_spec,
                 )
@@ -420,7 +456,7 @@ def plt_regression(
             and ~np.isnan(beta_intercept)
         ):
             model_equation_text.append(f"""Trend{trend_idx + 1}:
-In Conc. = {beta_interp:.2f} (+/- {se_interp:.3f})*River Stage + {beta_event:.5f} (+/- {se_event:.6f})*Date + {beta_intercept:.2f} (+/- {se_intercept:.0f})
+In Conc. = {beta_interp:.2f} (+/- {se_interp:.3f})*River Stage + {beta_event:.5f} (+/- {se_event:.6f})*Date + {beta_intercept:.0f} (+/- {se_intercept:.1f})
 """)
             num_trend_equations += 1
         else:
@@ -465,34 +501,46 @@ def plt_chem(
     well: str,
     chem_trends_well: pd.Series,
     chem_rs_well: pd.DataFrame,
+    ifile_chem_trends: pd.DataFrame,
     page_fig: Figure,
     grid_spec: GridSpec,
 ) -> Tuple[pd.DatetimeIndex, Axes, Axes, Axes]:
-    chem_rs_well_clean = chem_rs_well.loc[
-        chem_rs_well["NDS"].notna() & chem_rs_well["TERM"].notna()
-    ]
-    chem_concentrations = chem_rs_well["VAL"]
-    chem_concentrations_clean = chem_concentrations[~np.isnan(chem_concentrations)]
-    chem_concentrations_NDS = chem_rs_well_clean.loc[chem_rs_well_clean["NDS"], "VAL"]
-    chem_dates = pd.to_datetime(chem_rs_well["EVENT"])
-    chem_dates_clean = chem_dates[~np.isnan(chem_concentrations)]
-    chem_dates_NDS = pd.to_datetime(
-        chem_rs_well_clean.loc[chem_rs_well_clean["NDS"], "EVENT"]
-    )
-    chem_river_stages = chem_rs_well["INTERP"]
 
-    # print(f"Chem TRENDS WELL CLEAN\n{chem_rs_well_clean}\n")
+    # R equivalent: DT <- X@DATA; DT <- DT[order(EVENT), ]
+    chem_rs_well = chem_rs_well.copy()
+    chem_rs_well["EVENT"] = pd.to_datetime(chem_rs_well["EVENT"], errors="coerce")
+    chem_rs_well["TERM_NUM"] = pd.to_numeric(chem_rs_well["TERM"], errors="coerce")
+    chem_rs_well["VAL_NUM"] = pd.to_numeric(chem_rs_well["VAL"], errors="coerce")
+    chem_rs_well["INTERP_NUM"] = pd.to_numeric(chem_rs_well["INTERP"], errors="coerce")
+    chem_rs_well = chem_rs_well.sort_values("EVENT").reset_index(drop=True)
+
+    chem_obs = chem_rs_well.loc[
+        chem_rs_well["VAL_NUM"].notna() & chem_rs_well["TERM_NUM"].notna()
+    ].copy()
+
+    chem_nd = chem_obs.loc[chem_obs["NDS"].fillna(False).astype(bool)].copy()
+
+    chem_dates = chem_rs_well["EVENT"]
+    chem_river_stages = chem_rs_well["INTERP_NUM"]
+
+    if chem_obs.empty:
+        chem_min, chem_max = 1.0, 10.0
+    else:
+        chem_min = chem_obs["VAL_NUM"].min(skipna=True)
+        chem_max = chem_obs["VAL_NUM"].max(skipna=True)
+        if not np.isfinite(chem_min) or chem_min <= 0:
+            chem_min = chem_obs.loc[chem_obs["VAL_NUM"] > 0, "VAL_NUM"].min(skipna=True)
+        if not np.isfinite(chem_min) or chem_min <= 0:
+            chem_min = 1.0
+        if not np.isfinite(chem_max) or chem_max <= chem_min:
+            chem_max = chem_min * 10.0
 
     chem_concentrations_axis = page_fig.add_subplot(
         grid_spec[3, :] if well in wl_wells_set else grid_spec[2, :]
     )
     chem_concentrations_axis.set_facecolor(COLOR_LIGHT_GRAY)
-    chem_min = chem_concentrations.min(skipna=True)
-    chem_max = chem_concentrations.max(skipna=True)
-
     chem_concentrations_axis.xaxis.set_major_locator(YearLocator())
     chem_concentrations_axis.xaxis.set_major_formatter(DateFormatter("%Y"))
-
     chem_concentrations_axis.set_yscale("log")
     chem_concentrations_axis.yaxis.set_major_locator(LogLocator(base=10))
     chem_concentrations_axis.yaxis.set_major_formatter(FormatStrFormatter("%.0e"))
@@ -501,7 +549,6 @@ def plt_chem(
     ymax = 10 ** np.ceil(np.log10(chem_max))
     chem_concentrations_axis.set_ylim(ymin - 0.1, ymax + 1)
     chem_concentrations_axis.set_ylabel("Hex. & Filt. Cr (µg/L)")
-
     chem_concentrations_axis.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
     )
@@ -511,48 +558,49 @@ def plt_chem(
     chem_concentrations_axis.grid(
         True, which="minor", axis="y", linewidth=0.5, color="#FFFFFF"
     )
+    chem_concentrations_axis.set_axisbelow(True)
 
+    # Right axis is display-only. River stage is plotted on the chemistry axis
+    # after scaling, which avoids twinx layering/grid artefacts.
     chem_river_stage_axis = chem_concentrations_axis.twinx()
     chem_river_stage_axis.set_ylabel("River Stage (m amsl)")
     min_stage = 2 * np.floor((chem_river_stages.min(skipna=True) - 1) / 2) + 1
     max_stage = 2 * np.ceil((chem_river_stages.max(skipna=True) - 1) / 2) + 1
+    stage_ymin = min_stage - 0.25
+    stage_ymax = max_stage + 0.25
     ticks = np.arange(min_stage, max_stage + 2, 2)
-
     chem_river_stage_axis.set_yticks(ticks)
-    chem_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
+    chem_river_stage_axis.set_ylim(stage_ymin, stage_ymax)
+    chem_river_stage_axis.patch.set_visible(False)
+    chem_river_stage_axis.grid(False)
 
-    chem_trends_dates_clean_numeric = (
-        chem_dates_clean - chem_dates_clean.min()
-    ).dt.days / 365.25
-    chem_trends_dates_numeric = (chem_dates - chem_dates.min()).dt.days / 365.25
-
-    chem_concentrations_clean_log = np.log1p(chem_concentrations_clean)
-
-    coeffs = np.polyfit(
-        chem_trends_dates_clean_numeric, chem_concentrations_clean_log, deg=1
+    # Log-space scaling because the concentration axis is log-scaled.
+    chem_ymin, chem_ymax = chem_concentrations_axis.get_ylim()
+    stage_frac = (chem_river_stages - stage_ymin) / (stage_ymax - stage_ymin)
+    chem_river_stages_scaled = np.exp(
+        np.log(chem_ymin) + stage_frac * (np.log(chem_ymax) - np.log(chem_ymin))
     )
-    mock_trend = np.poly1d(coeffs)
-
-    calculated_concentrations_trend = np.expm1(mock_trend(chem_trends_dates_numeric))
-    calculated_concentrations_trend = np.maximum(calculated_concentrations_trend, 0)
+    chem_concentrations_axis.plot(
+        chem_dates,
+        chem_river_stages_scaled,
+        linewidth=0.75,
+        color=COLOR_LIGHT_BLUE,
+        label="River Stage",
+        zorder=1,
+    )
 
     chem_concentrations_axis2 = page_fig.add_subplot(
         grid_spec[4, :] if well in wl_wells_set else grid_spec[3, :]
     )
     chem_concentrations_axis2.set_facecolor(COLOR_LIGHT_GRAY)
-
     chem_concentrations_axis2.xaxis.set_major_locator(YearLocator())
     chem_concentrations_axis2.xaxis.set_major_formatter(DateFormatter("%Y"))
-
     chem_concentrations_axis2.set_yscale("log")
     chem_concentrations_axis2.yaxis.set_major_locator(LogLocator(base=10))
     chem_concentrations_axis2.yaxis.set_major_formatter(FormatStrFormatter("%.0e"))
     chem_concentrations_axis2.yaxis.set_minor_formatter(NullFormatter())
-    ymin = 10 ** np.floor(np.log10(chem_min))
-    ymax = 10 ** np.ceil(np.log10(chem_max))
     chem_concentrations_axis2.set_ylim(ymin - 0.1, ymax + 1)
     chem_concentrations_axis2.set_ylabel("Hex. & Filt. Cr (µg/L)")
-
     chem_concentrations_axis2.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
     )
@@ -562,61 +610,37 @@ def plt_chem(
     chem_concentrations_axis2.grid(
         True, which="minor", axis="y", linewidth=0.5, color="#FFFFFF"
     )
+    chem_concentrations_axis2.set_axisbelow(True)
+
+    if num_trend_equations == 0:
+        chem_concentrations_axis.tick_params(axis="x", labelrotation=90, labelsize=7)
+    else:
+        chem_concentrations_axis.set_xticklabels([])
+        chem_concentrations_axis2.tick_params(axis="x", labelrotation=90, labelsize=7)
 
     marker_face_colors = MARKER_FACE_COLORS
     marker_edge_colors = MARKER_EDGE_COLORS
 
-    chem_river_stage_axis.plot(
-        chem_dates,
-        chem_river_stages,
-        linewidth=0.75,
-        color=COLOR_LIGHT_BLUE,
-        label="River Stage",
-    )
-
-    if num_trend_equations == 0:
-        chem_concentrations_axis.tick_params(axis="x", labelrotation=90)
-    else:
-        chem_concentrations_axis.set_xticklabels([])
-        chem_concentrations_axis2.tick_params(axis="x", labelrotation=90)
-
     for trend_idx in range(len(chem_trends_well)):
-        chem_concentrations_trend = chem_rs_well_clean.loc[
-            chem_rs_well_clean["TERM"].astype(int) == trend_idx + 1, "VAL"
-        ]
-        chem_concentrations_clean_trend = chem_concentrations_trend[
-            ~np.isnan(chem_concentrations_trend)
-        ]
-        chem_concentrations_detects_trend = chem_rs_well_clean.loc[
-            (~chem_rs_well_clean["NDS"])
-            & (chem_rs_well_clean["TERM"].astype(int) == trend_idx + 1),
-            "VAL",
-        ]
-        chem_dates_trend = pd.to_datetime(
-            chem_rs_well_clean.loc[
-                chem_rs_well_clean["TERM"].astype(int) == trend_idx + 1, "EVENT"
-            ]
-        )
-        chem_dates_clean_trend = chem_dates_trend[~np.isnan(chem_concentrations_trend)]
-        chem_dates_detects_trend = pd.to_datetime(
-            chem_rs_well_clean.loc[
-                (~chem_rs_well_clean["NDS"])
-                & (chem_rs_well_clean["TERM"].astype(int) == trend_idx + 1),
-                "EVENT",
-            ]
-        )
+        term_no = trend_idx + 1
+
+        obs_term = chem_obs.loc[chem_obs["TERM_NUM"] == term_no].copy()
+        obs_term = obs_term.sort_values("EVENT").reset_index(drop=True)
+
+        detects_term = obs_term.loc[~obs_term["NDS"].fillna(False).astype(bool)].copy()
 
         chem_concentrations_axis.plot(
-            chem_dates_clean_trend,
-            chem_concentrations_clean_trend,
+            obs_term["EVENT"],
+            obs_term["VAL_NUM"],
             linewidth=1,
             color=marker_edge_colors[trend_idx],
+            zorder=3,
         )
 
-        if not chem_concentrations_detects_trend.empty:
+        if not detects_term.empty:
             chem_concentrations_axis.plot(
-                chem_dates_detects_trend,
-                chem_concentrations_detects_trend,
+                detects_term["EVENT"],
+                detects_term["VAL_NUM"],
                 linewidth=0,
                 marker="o",
                 markersize=4,
@@ -626,33 +650,76 @@ def plt_chem(
                 label=(
                     "Observed Concentration"
                     if len(chem_trends_well) == 1
-                    else f"Observed Conc. (Trend{trend_idx + 1})"
+                    else f"Observed Conc. (Trend{term_no})"
                 ),
+                zorder=4,
             )
 
         if num_trend_equations > 0:
             chem_concentrations_axis2.plot(
-                chem_dates_clean_trend,
-                chem_concentrations_clean_trend,
+                obs_term["EVENT"],
+                obs_term["VAL_NUM"],
                 linewidth=1,
                 color=marker_edge_colors[trend_idx],
+                zorder=3,
             )
-            if not chem_concentrations_detects_trend.empty:
+
+            if not detects_term.empty:
                 chem_concentrations_axis2.plot(
-                    chem_dates_detects_trend,
-                    chem_concentrations_detects_trend,
+                    detects_term["EVENT"],
+                    detects_term["VAL_NUM"],
                     linewidth=0,
                     marker="o",
                     markersize=4,
                     markerfacecolor=marker_face_colors[trend_idx],
                     markeredgewidth=0.75,
                     markeredgecolor=marker_edge_colors[trend_idx],
+                    zorder=4,
                 )
 
-    if not chem_concentrations_NDS.empty:
+            model_rows = ifile_chem_trends.loc[
+                (ifile_chem_trends["WELL"] == well)
+                & (ifile_chem_trends["ITER"] == term_no)
+            ].copy()
+
+            if "fit_ok" in model_rows.columns:
+                model_rows = model_rows.loc[model_rows["fit_ok"] == True]
+
+            if not model_rows.empty:
+                model_row = model_rows.iloc[0]
+
+                if pd.notna(model_row["beta_intercept"]):
+                    pred_term = chem_rs_well.loc[
+                        chem_rs_well["TERM_NUM"] == term_no
+                    ].copy()
+
+                    pred_term = (
+                        pred_term.loc[
+                            pred_term["EVENT"].notna() & pred_term["INTERP_NUM"].notna()
+                        ]
+                        .sort_values("EVENT")
+                        .reset_index(drop=True)
+                    )
+
+                    if not pred_term.empty:
+                        pred = calculate_tobit_prediction(pred_term, model_row)
+
+                        ok = pred.notna() & np.isfinite(pred) & (pred > 0)
+
+                        chem_concentrations_axis2.plot(
+                            pred_term.loc[ok, "EVENT"],
+                            pred.loc[ok],
+                            linestyle="-",
+                            color=COLOR_CALC,
+                            linewidth=1,
+                            label="Calculated Conc." if trend_idx == 0 else None,
+                            zorder=1,
+                        )
+
+    if not chem_nd.empty:
         chem_concentrations_axis.plot(
-            chem_dates_NDS,
-            chem_concentrations_NDS,
+            chem_nd["EVENT"],
+            chem_nd["VAL_NUM"],
             marker="v",
             linewidth=0,
             markersize=4,
@@ -660,29 +727,24 @@ def plt_chem(
             markeredgewidth=0.75,
             markeredgecolor=COLOR_ND_EDGE,
             label="Non-Detect",
+            zorder=4,
         )
 
-    if num_trend_equations == 0:
-        chem_concentrations_axis2.set_axis_off()
-    else:
-        if not chem_concentrations_NDS.empty:
+        if num_trend_equations > 0:
             chem_concentrations_axis2.plot(
-                chem_dates_NDS,
-                chem_concentrations_NDS,
+                chem_nd["EVENT"],
+                chem_nd["VAL_NUM"],
                 marker="v",
                 linewidth=0,
                 markersize=4,
                 markerfacecolor=COLOR_ND,
                 markeredgewidth=0.75,
                 markeredgecolor=COLOR_ND_EDGE,
+                zorder=4,
             )
-        chem_concentrations_axis2.plot(
-            chem_dates,
-            calculated_concentrations_trend,
-            linestyle="-",
-            color=COLOR_CALC,
-            label="Calculated Conc.",
-        )
+
+    if num_trend_equations == 0:
+        chem_concentrations_axis2.set_axis_off()
 
     return (
         chem_dates,
@@ -699,30 +761,67 @@ def plt_wl_rs(
     chem_dates: pd.DatetimeIndex,
     chem_river_stage_axis: Axes,
 ) -> Tuple[Axes, Axes]:
-    wl_elevations: pd.Series[float] = wl_rs_well["WLE"]
-    wl_river_stages: pd.Series[float] = wl_rs_well["INTERP"]
-    wl_trends_dates = pd.to_datetime(wl_rs_well["EVENT"])
+    wl_elevations: pd.Series[float] = pd.to_numeric(wl_rs_well["WLE"], errors="coerce")
+    wl_river_stages: pd.Series[float] = pd.to_numeric(
+        wl_rs_well["INTERP"], errors="coerce"
+    )
+    wl_trends_dates = pd.to_datetime(wl_rs_well["EVENT"], errors="coerce")
     wl_elevations_clean = wl_elevations[~np.isnan(wl_elevations)]
     wl_trends_dates_clean = wl_trends_dates[~np.isnan(wl_elevations)]
 
     wl_elevation_axis = page_fig.add_subplot(grid_spec[2, :])
     wl_elevation_axis.set_facecolor(COLOR_LIGHT_GRAY)
     wl_elevation_axis.grid(True, linewidth=0.5, color="#FFFFFF")
+    wl_elevation_axis.set_axisbelow(True)
     wl_elevation_axis.xaxis.set_major_locator(YearLocator())
     wl_elevation_axis.xaxis.set_major_formatter(DateFormatter("%Y"))
     wl_elevation_axis.set_xticklabels([])
     wl_elevation_axis.set_ylabel("Water-Level (m amsl)")
 
-    wl_river_stage_axis = wl_elevation_axis.twinx()
-    min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
-    max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
-    ticks = np.arange(min_stage, max_stage + 2, 2)
-    wl_river_stage_axis.set_ylim(min_stage - 0.25, max_stage + 0.25)
-    wl_river_stage_axis.set_yticks(ticks)
-    wl_river_stage_axis.set_ylabel("River Stage (m amsl)")
-
     wl_trends_dates_filtered = wl_trends_dates[wl_trends_dates >= chem_dates.min()]
     wl_river_stages_filtered = wl_river_stages[-1 * wl_trends_dates_filtered.count() :]
+
+    min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
+    max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
+    stage_ymin = min_stage - 0.25
+    stage_ymax = max_stage + 0.25
+    ticks = np.arange(min_stage, max_stage + 2, 2)
+
+    wl_ymin = np.nanmin(
+        [
+            wl_rs_well["BOT"].iloc[0],
+            wl_rs_well["TOP"].iloc[0],
+            wl_elevations_clean.min(),
+        ]
+    )
+    wl_ymax = np.nanmax(
+        [
+            wl_rs_well["BOT"].iloc[0],
+            wl_rs_well["TOP"].iloc[0],
+            wl_elevations_clean.max(),
+        ]
+    )
+    wl_elevation_axis.set_ylim(wl_ymin, wl_ymax)
+
+    # Right axis is display-only. River stage is scaled and drawn on the
+    # water-level axis so it stays behind water-level observations.
+    wl_river_stage_axis = wl_elevation_axis.twinx()
+    wl_river_stage_axis.set_ylim(stage_ymin, stage_ymax)
+    wl_river_stage_axis.set_yticks(ticks)
+    wl_river_stage_axis.set_ylabel("River Stage (m amsl)")
+    wl_river_stage_axis.patch.set_visible(False)
+    wl_river_stage_axis.grid(False)
+
+    stage_frac = (wl_river_stages_filtered - stage_ymin) / (stage_ymax - stage_ymin)
+    wl_river_stages_scaled = wl_ymin + stage_frac * (wl_ymax - wl_ymin)
+    wl_elevation_axis.plot(
+        wl_trends_dates_filtered,
+        wl_river_stages_scaled,
+        linewidth=0.75,
+        color=COLOR_LIGHT_BLUE,
+        label="River Stage",
+        zorder=1,
+    )
 
     page_size = page_fig.get_size_inches() * 2.54  # cm
     screen_xrange = wl_trends_dates.max().year - wl_trends_dates.min().year
@@ -744,7 +843,7 @@ def plt_wl_rs(
         facecolor=COLOR_BISQUE,
         edgecolor=COLOR_BLACK,
         linewidth=0.5,
-        zorder=10,
+        zorder=2,
     )
 
     if (
@@ -765,7 +864,7 @@ def plt_wl_rs(
                 y=y,
                 colors=COLOR_BLACK,
                 linewidth=0.5,
-                zorder=11,
+                zorder=3,
             )
 
     wl_elevation_axis.plot(
@@ -780,18 +879,10 @@ def plt_wl_rs(
         markeredgewidth=0.75,
         markeredgecolor="#050607",
         label="Observed Groundwater Elevation",
-        zorder=3,
+        zorder=4,
     )
 
-    wl_river_stage_axis.plot(
-        wl_trends_dates_filtered,
-        wl_river_stages_filtered,
-        linewidth=0.75,
-        color=COLOR_LIGHT_BLUE,
-        label="River Stage",
-        zorder=2,
-    )
-
+    wl_elevation_axis.set_xlim(chem_river_stage_axis.get_xlim())
     wl_river_stage_axis.set_xlim(chem_river_stage_axis.get_xlim())
     return wl_elevation_axis, wl_river_stage_axis
 

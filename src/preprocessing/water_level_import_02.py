@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-
 # --------------------------------------------------------------------------------------
 # Small helpers
 # --------------------------------------------------------------------------------------
@@ -420,10 +419,7 @@ def run_water_level_import(
     DIST = dist.copy()
     STAGEDIST = stagedist.copy()
 
-    WELLS = WELL.loc[WELL["OU"].isin(["100-KR-4", "100-HR-3-D", "100-HR-3-H"])].copy()
-    WELLS = WELLS.loc[
-        ~WELLS["STATUS"].isin(["DECOMMISSIONED-V", "DRILLING CANCELLED"]), "NAME"
-    ].copy()
+    WELLS = well["NAME"].copy()
 
     WL["UNITS"] = "m"
     WL = WL.loc[WL["NAME"].isin(WELLS)].copy()

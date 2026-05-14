@@ -15,8 +15,9 @@ class ChemistryImportConfig:
     combined_analyte_name: str = "Hex. Chromium and Fil. Chromium"
     mdl_sub_if_nonpositive_missing: float = 1.0
 
-    ou_keep: Sequence[str] = ("100-KR-4", "100-HR-3-D", "100-HR-3-H")
-    status_exclude: Sequence[str] = ("DECOMMISSIONED-V", "DRILLING CANCELLED")
+    well_filter_cols: Sequence[str] = ()
+    well_filter_modes: Sequence[str] = ()
+    well_filter_values: Sequence[Sequence[str]] = ()
 
     reviewq_remove_patterns: Sequence[str] = ("Y", "R")
     collection_purpose_exclude: Sequence[str] = (
@@ -275,9 +276,7 @@ def run_chemistry_import(
         CHROM["MDL"],
     )
 
-    # --Subset Data for OUs of Interest--#
-    WELLS = well.loc[well["OU"].isin(cfg.ou_keep)].copy()
-    WELLS = WELLS.loc[~WELLS["STATUS"].isin(cfg.status_exclude), "NAME"].copy()
+    WELLS = well["NAME"].copy()
     CHROM = CHROM.loc[CHROM["NAME"].isin(WELLS)].copy()
 
     # --exclude samples where REVIEWQ include flags Y or R in it.--#
