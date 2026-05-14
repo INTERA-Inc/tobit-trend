@@ -72,7 +72,7 @@ Cr_TrendData_2024.parquet
 WL_TrendData_2024.parquet
 WL_trends_2024.parquet
 TTA_results_<run_id>.csv
-TobitRegression_WLlag_<OU>_<run_version>.pdf
+TobitRegression_WLlag_<OU>_<run_id>.pdf
 tta.log
 ```
 
