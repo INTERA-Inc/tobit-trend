@@ -1,46 +1,56 @@
 # Tobit Trend Analysis Tool
 
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-green)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Python workflow for groundwater chemistry and water-level trend analysis. The tool reads all input paths and workflow settings from a TOML configuration file, runs the analysis steps sequentially, and writes processed data, model outputs, reports, and a run log to the configured output directory.
+
+The workflow is implemented as an installable Python package (`tta`) with command-line entry points for both groundwater trend analysis and chromium chemistry preparation.
 
 ## Repository layout
 
 ```text
 project-root/
+├── pyproject.toml
+├── README.md
+├── environment.yml
 ├── configs/
 │   └── trend_config.toml
 ├── input/
 │   └── ...
-├── src/
-│   ├── run.py
-│   ├── config.py
-│   ├── utils.py
-│   ├── preprocessing/
-│   │   ├── prepare_chromium_chemistry.py
-│   │   ├── calculate_distance_00.py
-│   │   ├── chemistry_import_01.py
-│   │   ├── water_level_import_02.py
-│   │   ├── water_level_trends_03.py
-│   │   └── tobit_prep_04.py
-│   ├── model/
-│   │   └── tobit_model_04_mod.py
-│   └── reporting/
-│       └── generate_report.py
-└── environment.yml
+└── src/
+    └── tta/
+        ├── run.py
+        ├── config.py
+        ├── utils.py
+        ├── preprocessing/
+        │   ├── prepare_chromium_chemistry.py
+        │   ├── calculate_distance_00.py
+        │   ├── chemistry_import_01.py
+        │   ├── water_level_import_02.py
+        │   ├── water_level_trends_03.py
+        │   └── tobit_prep_04.py
+        ├── model/
+        │   └── tobit_model_04_mod.py
+        └── reporting/
+            └── generate_report.py
 ```
 
 
 ## Installation
 
-Create the conda environment from the supplied YAML file:
+Create and activate the conda environment:
 
 ```bash
 conda env create -f environment.yml
+conda activate tta
 ```
 
-Activate the environment:
+Install the package from the project root:
 
 ```bash
-conda activate tta
+pip install -e .
 ```
 
 ## Configuration
@@ -53,13 +63,36 @@ configs/trend_config.toml
 
 ## Running the workflow
 
-Run the tool from the **project root**
+Run from the project root:
 
 ```bash
-python src/run.py configs/trend_config.toml
+tta configs/trend_config.toml
 ```
 
+Alternative:
+
+```bash
+python -m tta.run configs/trend_config.toml
+```
+
+The TOML paths are expected to be relative to the project root.
+
 The paths in the TOML are expected to be relative to the project root.
+
+## Chromium chemistry preparation
+
+Chromium-specific chemistry preparation is handled outside the main workflow.
+
+Run:
+
+```bash
+prepare-chromium-chemistry \
+  --chem-files input/00_Data/Chemistry_Data/CY24/file1.txt input/00_Data/Chemistry_Data/CY24/file2.txt \
+  --year 2024 \
+  --output input/prepared_chemistry/prepared_chemistry_2024.parquet
+```
+
+The generated parquet file is then supplied to the main workflow as analyte-neutral chemistry input.
 
 ## Outputs
 
@@ -118,3 +151,7 @@ Prepares chemistry data for censored regression by applying trend breaks, assign
 ### Step 05 — Reporting
 
 Generates OU-level PDF reports.
+
+## License
+
+BSD 3-Clause License

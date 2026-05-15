@@ -3,10 +3,10 @@ import pyarrow.parquet as pq
 from pathlib import Path
 
 # loading tobit workflow config
-from config import TrendConfig
+from tta.config import TrendConfig
 
 # load utils
-from utils import (
+from tta.utils import (
     load_table,
     build_output_dir,
     normalize_selected_wells,
@@ -19,22 +19,22 @@ from utils import (
 )
 
 # loading tobit workflow scripts
-from preprocessing.calculate_distance_00 import run_calculate_distance
-from preprocessing.chemistry_import_01 import (
+from tta.preprocessing.calculate_distance_00 import run_calculate_distance
+from tta.preprocessing.chemistry_import_01 import (
     run_chemistry_import,
     ChemistryImportConfig,
 )
-from preprocessing.water_level_import_02 import run_water_level_import
-from preprocessing.water_level_trends_03 import (
+from tta.preprocessing.water_level_import_02 import run_water_level_import
+from tta.preprocessing.water_level_trends_03 import (
     run_water_level_trend_analysis,
     flatten_water_level_trends,
 )
-from preprocessing.tobit_prep_04 import run_script04_prep
-from model.tobit_model_04 import do_tobit_rstyle
-from reporting.generate_report import generate_report
+from tta.preprocessing.tobit_prep_04 import run_script04_prep
+from tta.model.tobit_model_04 import do_tobit_rstyle
+from tta.reporting.generate_report import generate_report
 
 
-def main():
+def main() -> None:
     args = parse_args()
     config = TrendConfig.from_toml(args.config)
     # Load config
