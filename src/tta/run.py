@@ -269,8 +269,8 @@ try:
         logger.info("Total runtime: %.1f seconds", perf_counter() - run_start)
         logger.info("Output directory: %s", output_dir)
 
-except Exception:
-    logger.exception("Workflow failed")
+except Exception as exc:
+    logger.exception("Workflow failed: %s", exc)
     raise
 
 if __name__ == "__main__":
