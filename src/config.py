@@ -26,10 +26,6 @@ class TrendConfig:
     well_filter_cols: list[str]
     well_filter_modes: list[str]
     well_filter_values: list[list[str]]
-    chromium_analyte: str
-    hexchrom_analyte: str
-    filtered_keep_value: str
-    combined_analyte_name: str
     mdl_sub_if_nonpositive_missing: float
     reviewq_remove_patterns: list[str]
     collection_purpose_exclude: list[str]
@@ -91,10 +87,6 @@ class TrendConfig:
             well_filter_values=[
                 list(v) for v in raw["prep_chemistry"].get("well_filter_values", [])
             ],
-            chromium_analyte=raw["prep_chemistry"]["chromium_analyte"],
-            hexchrom_analyte=raw["prep_chemistry"]["hexchrom_analyte"],
-            filtered_keep_value=raw["prep_chemistry"]["filtered_keep_value"],
-            combined_analyte_name=raw["prep_chemistry"]["combined_analyte_name"],
             mdl_sub_if_nonpositive_missing=float(
                 raw["prep_chemistry"]["mdl_sub_if_nonpositive_missing"]
             ),

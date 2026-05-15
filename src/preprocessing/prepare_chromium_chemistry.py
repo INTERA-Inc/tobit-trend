@@ -131,7 +131,6 @@ def prepare_chromium_chemistry(
        - Hexavalent Chromium regardless of FILTERED.
     4. Preserve original analyte in ANALYTE_ORG.
     5. Rename ANALYTE to the combined analyte name.
-    6. Fill missing MDL where VAL <= 0 using configured substitution value.
     """
     if not chem_files:
         raise ValueError("No chemistry files supplied.")
@@ -165,11 +164,15 @@ def prepare_chromium_chemistry(
             "Chromium preparation produced no records. "
             "Check analyte names, FILTERED values, and year cutoff."
         )
-
     chrom["ANALYTE_ORG"] = chrom["ANALYTE"]
     chrom["ANALYTE"] = combined_analyte_name
 
-    chrom = chrom.drop_duplicates().reset_index(drop=True)
+    chrom["DUPLICATE_PRIORITY"] = np.where(
+        chrom["ANALYTE_ORG"] == hexchrom_analyte,
+        1,
+        0,
+    )
+
     return chrom
 
 

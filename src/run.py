@@ -107,9 +107,6 @@ def main():
     logger.info("Step 01: Running chemistry import")
     chem_cfg = ChemistryImportConfig(
         mdl_sub_if_nonpositive_missing=config.mdl_sub_if_nonpositive_missing,
-        well_filter_cols=config.well_filter_cols,
-        well_filter_modes=config.well_filter_modes,
-        well_filter_values=config.well_filter_values,
         reviewq_remove_patterns=config.reviewq_remove_patterns,
         collection_purpose_exclude=config.collection_purpose_exclude,
         trend_min_year=config.trend_min_year,

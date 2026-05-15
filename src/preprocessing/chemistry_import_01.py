@@ -11,10 +11,6 @@ import pandas as pd
 class ChemistryImportConfig:
     mdl_sub_if_nonpositive_missing: float = 1.0
 
-    well_filter_cols: Sequence[str] = ()
-    well_filter_modes: Sequence[str] = ()
-    well_filter_values: Sequence[Sequence[str]] = ()
-
     reviewq_remove_patterns: Sequence[str] = ("Y", "R")
     collection_purpose_exclude: Sequence[str] = (
         "IH",
@@ -55,6 +51,24 @@ def read_chem_heis(path: str, eform: str = "%m/%d/%Y %H:%M:%S") -> pd.DataFrame:
 
     df = df.drop_duplicates().reset_index(drop=True)
     return df
+
+
+def read_prepared_chemistry(path: str) -> pd.DataFrame:
+    """
+    Read prepared single-analyte chemistry input.
+
+    Expected input is already analyte-selected/combined.
+    Parquet is preferred, but CSV/TXT are also allowed.
+    """
+    path_str = str(path).lower()
+
+    if path_str.endswith(".parquet"):
+        return pd.read_parquet(path)
+
+    if path_str.endswith((".csv", ".txt")):
+        return pd.read_csv(path, low_memory=False)
+
+    raise ValueError(f"Unsupported chemistry input format: {path}")
 
 
 def _year(series: pd.Series) -> pd.Series:
@@ -247,79 +261,87 @@ def run_chemistry_import(
         cfg = ChemistryImportConfig()
 
     # --Import Chemistry Dataset--#
-    chem_parts = [read_chem_heis(path) for path in chem_files]
+    chem_parts = [read_prepared_chemistry(path) for path in chem_files]
     CHEM = pd.concat(chem_parts, ignore_index=True)
+
     CHEM["EVENT"] = pd.to_datetime(CHEM["EVENT"], errors="coerce")
+    CHEM["VAL"] = pd.to_numeric(CHEM["VAL"], errors="coerce")
+    CHEM["MDL"] = pd.to_numeric(CHEM["MDL"], errors="coerce")
+
     CHEM = CHEM.loc[_year(CHEM["EVENT"]) <= yr].copy()
 
-    # --Create Chromium and Hex Chromium Datasets--#
-    CHROM = pd.concat(
-        [
-            CHEM.loc[
-                (CHEM["ANALYTE"] == cfg.chromium_analyte)
-                & (CHEM["FILTERED"] == cfg.filtered_keep_value)
-            ].copy(),
-            CHEM.loc[CHEM["ANALYTE"] == cfg.hexchrom_analyte].copy(),
-        ],
-        ignore_index=True,
-    )
+    # Prepared chemistry
+    CHEMISTRY = CHEM.copy()
 
-    CHROM["ANALYTE_ORG"] = CHROM["ANALYTE"]
-    CHROM["ANALYTE"] = cfg.combined_analyte_name
-    CHROM["MDL"] = np.where(
-        (CHROM["VAL"] <= 0) & (CHROM["MDL"].isna()),
+    if "ANALYTE_ORG" not in CHEMISTRY.columns:
+        CHEMISTRY["ANALYTE_ORG"] = CHEMISTRY["ANALYTE"]
+
+    CHEMISTRY["MDL"] = np.where(
+        (CHEMISTRY["VAL"] <= 0) & (CHEMISTRY["MDL"].isna()),
         cfg.mdl_sub_if_nonpositive_missing,
-        CHROM["MDL"],
+        CHEMISTRY["MDL"],
     )
 
     WELLS = well["NAME"].copy()
-    CHROM = CHROM.loc[CHROM["NAME"].isin(WELLS)].copy()
+    CHEMISTRY = CHEMISTRY.loc[CHEMISTRY["NAME"].isin(WELLS)].copy()
 
     # --exclude samples where REVIEWQ include flags Y or R in it.--#
-    reviewq = CHROM["REVIEWQ"].fillna("").astype(str)
-    review_mask = pd.Series(False, index=CHROM.index)
+    reviewq = CHEMISTRY["REVIEWQ"].fillna("").astype(str)
+    review_mask = pd.Series(False, index=CHEMISTRY.index)
     for pat in cfg.reviewq_remove_patterns:
         review_mask = review_mask | reviewq.str.contains(pat, regex=False)
-    CHROM = CHROM.loc[~review_mask].copy()
+    CHEMISTRY = CHEMISTRY.loc[~review_mask].copy()
 
     # [2] data filtering ============================================================
-    CHROM = CHROM.loc[
-        ~CHROM["COLLECTION_PURPOSE"].isin(cfg.collection_purpose_exclude)
+    CHEMISTRY = CHEMISTRY.loc[
+        ~CHEMISTRY["COLLECTION_PURPOSE"].isin(cfg.collection_purpose_exclude)
     ].copy()
 
     # [3] Non-detect handling ======================================================
-    CHROM["NDS"] = False
-    CHROM["VAL0"] = CHROM["VAL"]
+    CHEMISTRY["NDS"] = False
+    CHEMISTRY["VAL0"] = CHEMISTRY["VAL"]
 
-    labq = CHROM["LABQ"].fillna("").astype(str)
-    CHROM.loc[labq.str.contains("U", regex=True), "NDS"] = True
+    labq = CHEMISTRY["LABQ"].fillna("").astype(str)
+    CHEMISTRY.loc[labq.str.contains("U", regex=True), "NDS"] = True
 
-    CHROM.loc[(CHROM["NDS"] == True) & CHROM["MDL"].notna(), "VAL"] = CHROM["MDL"]
-    CHROM.loc[(CHROM["VAL"] <= 0) & CHROM["MDL"].notna(), "VAL"] = CHROM["MDL"]
+    CHEMISTRY.loc[(CHEMISTRY["NDS"] == True) & CHEMISTRY["MDL"].notna(), "VAL"] = (
+        CHEMISTRY["MDL"]
+    )
+    CHEMISTRY.loc[(CHEMISTRY["VAL"] <= 0) & CHEMISTRY["MDL"].notna(), "VAL"] = (
+        CHEMISTRY["MDL"]
+    )
 
     # [4] --Calculate Average Daily Concentration ==================================
-    CHROM["YEAR"] = CHROM["EVENT"].dt.year
-    CHROM["MONTH"] = CHROM["EVENT"].dt.month
-    CHROM["DAY"] = CHROM["EVENT"].dt.day
+    CHEMISTRY["YEAR"] = CHEMISTRY["EVENT"].dt.year
+    CHEMISTRY["MONTH"] = CHEMISTRY["EVENT"].dt.month
+    CHEMISTRY["DAY"] = CHEMISTRY["EVENT"].dt.day
 
-    tmp_tbl = CHROM.loc[:, ["NAME", "YEAR", "MONTH", "DAY"]].copy()
+    tmp_tbl = CHEMISTRY.loc[:, ["NAME", "YEAR", "MONTH", "DAY"]].copy()
     flag_dup = tmp_tbl.duplicated(keep=False)
 
-    all_duplicates = CHROM.loc[flag_dup].copy()
-    all_duplicates = all_duplicates.loc[
-        all_duplicates["ANALYTE_ORG"] == cfg.hexchrom_analyte
-    ].copy()
+    all_duplicates = CHEMISTRY.loc[flag_dup].copy()
 
-    CHROM_no_dup = CHROM.loc[~flag_dup].copy()
+    if "DUPLICATE_PRIORITY" in all_duplicates.columns:
+        max_priority = all_duplicates.groupby(["NAME", "YEAR", "MONTH", "DAY"])[
+            "DUPLICATE_PRIORITY"
+        ].transform("max")
 
-    CHROM = pd.concat([all_duplicates, CHROM_no_dup], ignore_index=True)
-    CHROM = CHROM.sort_values(["NAME", "EVENT", "ANALYTE_ORG"]).reset_index(drop=True)
+        all_duplicates = all_duplicates.loc[
+            (all_duplicates["DUPLICATE_PRIORITY"] == max_priority) & (max_priority > 0)
+        ].copy()
 
-    CHEM_tmp = CHROM.groupby(
+    CHEMISTRY_no_dup = CHEMISTRY.loc[~flag_dup].copy()
+
+    CHEMISTRY = pd.concat([all_duplicates, CHEMISTRY_no_dup], ignore_index=True)
+    CHEMISTRY = CHEMISTRY.sort_values(["NAME", "EVENT", "ANALYTE_ORG"]).reset_index(
+        drop=True
+    )
+
+    CHEM_tmp = CHEMISTRY.groupby(
         ["NAME", "ANALYTE", "YEAR", "MONTH", "DAY"], as_index=False
     )["VAL"].mean()
 
-    CHEM_unq = CHROM.loc[
+    CHEM_unq = CHEMISTRY.loc[
         :,
         [
             "NAME",
@@ -349,7 +371,7 @@ def run_chemistry_import(
         sort=False,
     )
 
-    CHROM = CHEM_f.loc[
+    CHEMISTRY = CHEM_f.loc[
         :,
         [
             "NAME",
@@ -372,7 +394,7 @@ def run_chemistry_import(
     stage_comb["EVENT"] = pd.to_datetime(stage_comb["EVENT"], errors="coerce")
 
     chrs = []
-    for well_name, X in CHROM.groupby("NAME", sort=False):
+    for well_name, X in CHEMISTRY.groupby("NAME", sort=False):
         if len(X) > 2 and X["EVENT"].dt.year.max() >= cfg.trend_min_year:
             RS = _prep_river_stage_for_well(stage_comb, stagedist, well_name)
 
