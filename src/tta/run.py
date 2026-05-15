@@ -32,7 +32,7 @@ from tta.preprocessing.water_level_trends_03 import (
 )
 from tta.preprocessing.tobit_prep_04 import run_script04_prep
 from tta.model.tobit_model_04 import do_tobit_rstyle
-from tta.reporting.generate_report import generate_report
+from tta.reporting.generate_report_05 import generate_report
 
 MODEL_LOG = "log"
 MODEL_INDEP = ["INTERP", "EVENT"]

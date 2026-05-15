@@ -20,7 +20,7 @@ src/tta/preprocessing/tobit_prep_04.py
 src/tta/preprocessing/water_level_import_02.py
 src/tta/preprocessing/water_level_trends_03.py
 src/tta/reporting/__init__.py
-src/tta/reporting/generate_report.py
+src/tta/reporting/generate_report_05.py
 src/tta/tools/__init__.py
 tests/test_chemistry_import_01.py
 tests/test_prepare_chromium_chemistry.py
