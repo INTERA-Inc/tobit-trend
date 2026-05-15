@@ -106,10 +106,6 @@ def main():
     # print("Running chemistry import...")
     logger.info("Step 01: Running chemistry import")
     chem_cfg = ChemistryImportConfig(
-        chromium_analyte=config.chromium_analyte,
-        hexchrom_analyte=config.hexchrom_analyte,
-        filtered_keep_value=config.filtered_keep_value,
-        combined_analyte_name=config.combined_analyte_name,
         mdl_sub_if_nonpositive_missing=config.mdl_sub_if_nonpositive_missing,
         well_filter_cols=config.well_filter_cols,
         well_filter_modes=config.well_filter_modes,

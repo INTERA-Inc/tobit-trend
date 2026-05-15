@@ -9,10 +9,6 @@ import pandas as pd
 
 @dataclass
 class ChemistryImportConfig:
-    chromium_analyte: str = "Chromium"
-    hexchrom_analyte: str = "Hexavalent Chromium"
-    filtered_keep_value: str = "Y"
-    combined_analyte_name: str = "Hex. Chromium and Fil. Chromium"
     mdl_sub_if_nonpositive_missing: float = 1.0
 
     well_filter_cols: Sequence[str] = ()
