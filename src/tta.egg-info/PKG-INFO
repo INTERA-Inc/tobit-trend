@@ -141,7 +141,7 @@ Calculates well distance to the river and distance to river-stage gauges. These 
 
 ### Step 01 — Chemistry preprocessing
 
-Imports and processes chemistry data. It handles non-detect flags, applies filters, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
+Imports and processes chemistry data. It handles non-detects, applies filters, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
 
 ### Step 02 — Water-level preprocessing
 
@@ -149,7 +149,7 @@ Imports and processes water-level data. It joins river-stage data, well metadata
 
 ### Step 03 — Water-level trend analysis
 
-Estimates the relationship between groundwater elevation, river stage and time. It calculates lag, number of observations, and p-values for the trend, river-stage term, and date term.
+Estimates the relationship between groundwater elevation, river stage and time. It calculates lag, number of observations, and p-values for the trend, river-stage term and date term.
 
 ### Step 04 — Chemistry Tobit preparation and modelling
 

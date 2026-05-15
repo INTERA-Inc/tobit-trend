@@ -617,17 +617,19 @@ def plt_chem(
     )
     chem_concentrations_axis2.set_axisbelow(True)
 
+    chem_concentrations_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
+    chem_river_stage_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
+    chem_concentrations_axis2.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
+
     if num_trend_equations == 0:
         chem_concentrations_axis.tick_params(
             axis="x", labelrotation=90, labelsize=FONT_SIZE_AXIS_LABELS
         )
-        chem_concentrations_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
     else:
         chem_concentrations_axis.set_xticklabels([])
         chem_concentrations_axis2.tick_params(
             axis="x", labelrotation=90, labelsize=FONT_SIZE_AXIS_LABELS
         )
-        chem_concentrations_axis2.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
     marker_face_colors = MARKER_FACE_COLORS
     marker_edge_colors = MARKER_EDGE_COLORS
