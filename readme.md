@@ -4,9 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Python workflow for groundwater chemistry and water-level trend analysis. The tool reads all input paths and workflow settings from a TOML configuration file, runs the analysis steps sequentially, and writes processed data, model outputs, reports, and a run log to the configured output directory.
-
-The workflow is implemented as an installable Python package (`tta`) with command-line entry points for both groundwater trend analysis and chromium chemistry preparation.
+Python workflow for groundwater chemistry and water-level trend analysis. 
 
 ## Repository layout
 
@@ -103,11 +101,11 @@ Typical outputs include:
 ```text
 DIST.csv
 STAGEDIST.csv
-Cr_TrendData_2024.parquet
-WL_TrendData_2024.parquet
-WL_trends_2024.parquet
-TTA_results_<run_id>.csv
-TobitRegression_WLlag_<OU>_<run_id>.pdf
+Cr_TrendData_<run_ver>.parquet
+WL_TrendData_<run_ver>.parquet
+WL_trends_<run_ver>.parquet
+TTA_results_<run_ver>.csv
+TobitRegression_WLlag_<OU>_<run_ver>.pdf
 tta.log
 ```
 

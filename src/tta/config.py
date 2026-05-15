@@ -38,7 +38,6 @@ class TrendConfig:
 
     # run_water_level_trend_analysis - script03
     maxlag: int
-    log: str
     n_min: int
     pnd_max: float
     mindate: str
@@ -55,7 +54,6 @@ class TrendConfig:
     KW_DATE2: str
     # tobit model
     dep: str
-    indep: list[str]
 
     # reporting
     save_reports: bool
@@ -102,7 +100,6 @@ class TrendConfig:
             wl_file=Path(raw["prep_wl"]["wl_file"]),
             WL_YEAR=int(raw["prep_wl"]["WL_YEAR"]),
             # run_water_level_trend_analysis - script03
-            log=raw["model"]["log"],
             maxlag=int(raw["model"]["maxlag"]),
             n_min=int(raw["model"]["n_min"]),
             pnd_max=float(raw["model"]["pnd_max"]),
@@ -119,7 +116,6 @@ class TrendConfig:
             KW_DATE2=raw["KW_DATES"]["date2"],
             # model
             dep=raw["model"]["dep"],
-            indep=list(raw["model"]["indep"]),
             # reporting
             save_reports=bool(raw.get("reporting", {}).get("save_reports", True)),
             gis_river_shapefile=Path(raw["reporting"]["gis_river_shapefile"]),

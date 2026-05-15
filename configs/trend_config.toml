@@ -40,14 +40,12 @@ WL_YEAR = 2024  # water level analysis year cutoff
 [tobit_trends] # script04 - CHEMISTRY TOBIT TREND ANALYSIS
 system_wells_csv = "input/SystemWells.csv"
 trend_breaks_csv = "input/TrendBreaks_v051824.csv"
-no_rs_csv = "input/NoRS.csv" # all no RS locationsa, combined with RUM locations
+no_rs_csv = "input/NoRS.csv" # all no RS locations, combined with RUM locations
 kw_csv = "input/KW_selected_locations.csv"
-r_script_path = "src/tools/crosscor_r_bridge.R"
+r_script_path = "src/tta/tools/crosscor_r_bridge.R"
 
 [model]
 dep = "VAL" # dependent variable
-indep = ["INTERP", "EVENT"] 
-log = "log"
 maxlag = 90
 n_min = 7
 pnd_max = 0.5

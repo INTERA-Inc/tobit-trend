@@ -102,7 +102,7 @@ def plt_report(
 ):
     for ou in OUs:
         wells_ou = wells[wells["OU"] == ou]
-        output_file = output_dir / f"TobitRegression_WLlag_{ou}_CY2024_{run_ver}.pdf"
+        output_file = output_dir / f"TobitRegression_WLlag_{ou}_{run_ver}.pdf"
 
         with PdfPages(output_file) as pdf:
             well: str
