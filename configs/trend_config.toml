@@ -5,7 +5,7 @@ version = "0.1.0"
 [global_settings]
 run_ver = "v6_051526"
 output_dir = "outputs"
-selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
+#selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
 
 [calculate_distance] # script00 - CALCULATE DISTANCE
 well_info_well = "input/00_Data/WELL.csv"
