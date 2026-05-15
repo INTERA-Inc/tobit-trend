@@ -149,7 +149,3 @@ Prepares chemistry data for censored regression by applying trend breaks, assign
 ### Step 05 — Reporting
 
 Generates OU-level PDF reports.
-
-## License
-
-BSD 3-Clause License
