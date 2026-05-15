@@ -188,7 +188,6 @@ def main():
         TREND_BREAKS_CSV=config.trend_breaks_csv,
         NO_RS_CSV=config.no_rs_csv,
         KW_CSV=config.kw_csv,
-        RUM_CSV=config.rum_csv,
         PRIOR_YEAR=config.PRIOR_YEAR,
         CUTOFFS=config.CUTOFFS,
         KW_DATE1=config.KW_DATE1,

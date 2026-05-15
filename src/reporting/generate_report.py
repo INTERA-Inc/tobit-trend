@@ -1,6 +1,9 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.gridspec import GridSpec
@@ -30,6 +33,7 @@ FONT_SIZE_TITLE = 20
 FONT_SIZE_HEADER = 10
 FONT_SIZE_TEXT = 8
 FONT_SIZE_TABLE = 10
+FONT_SIZE_AXIS_LABELS = 9
 
 # Colors
 COLOR_LIGHT_GRAY = "#E5E5E5"
@@ -547,7 +551,7 @@ def plt_chem(
     chem_concentrations_axis.yaxis.set_minor_formatter(NullFormatter())
     ymin = 10 ** np.floor(np.log10(chem_min))
     ymax = 10 ** np.ceil(np.log10(chem_max))
-    chem_concentrations_axis.set_ylim(ymin - 0.1, ymax + 1)
+    chem_concentrations_axis.set_ylim(ymin, ymax)
     chem_concentrations_axis.set_ylabel("Hex. & Filt. Cr (µg/L)")
     chem_concentrations_axis.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
@@ -573,6 +577,7 @@ def plt_chem(
     chem_river_stage_axis.set_ylim(stage_ymin, stage_ymax)
     chem_river_stage_axis.patch.set_visible(False)
     chem_river_stage_axis.grid(False)
+    chem_river_stage_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
     # Log-space scaling because the concentration axis is log-scaled.
     chem_ymin, chem_ymax = chem_concentrations_axis.get_ylim()
@@ -599,7 +604,7 @@ def plt_chem(
     chem_concentrations_axis2.yaxis.set_major_locator(LogLocator(base=10))
     chem_concentrations_axis2.yaxis.set_major_formatter(FormatStrFormatter("%.0e"))
     chem_concentrations_axis2.yaxis.set_minor_formatter(NullFormatter())
-    chem_concentrations_axis2.set_ylim(ymin - 0.1, ymax + 1)
+    chem_concentrations_axis2.set_ylim(ymin, ymax)
     chem_concentrations_axis2.set_ylabel("Hex. & Filt. Cr (µg/L)")
     chem_concentrations_axis2.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
@@ -613,10 +618,16 @@ def plt_chem(
     chem_concentrations_axis2.set_axisbelow(True)
 
     if num_trend_equations == 0:
-        chem_concentrations_axis.tick_params(axis="x", labelrotation=90, labelsize=7)
+        chem_concentrations_axis.tick_params(
+            axis="x", labelrotation=90, labelsize=FONT_SIZE_AXIS_LABELS
+        )
+        chem_concentrations_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
     else:
         chem_concentrations_axis.set_xticklabels([])
-        chem_concentrations_axis2.tick_params(axis="x", labelrotation=90, labelsize=7)
+        chem_concentrations_axis2.tick_params(
+            axis="x", labelrotation=90, labelsize=FONT_SIZE_AXIS_LABELS
+        )
+        chem_concentrations_axis2.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
     marker_face_colors = MARKER_FACE_COLORS
     marker_edge_colors = MARKER_EDGE_COLORS
@@ -777,6 +788,7 @@ def plt_wl_rs(
     wl_elevation_axis.xaxis.set_major_formatter(DateFormatter("%Y"))
     wl_elevation_axis.set_xticklabels([])
     wl_elevation_axis.set_ylabel("Water-Level (m amsl)")
+    wl_elevation_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
     wl_trends_dates_filtered = wl_trends_dates[wl_trends_dates >= chem_dates.min()]
     wl_river_stages_filtered = wl_river_stages[-1 * wl_trends_dates_filtered.count() :]
@@ -811,6 +823,7 @@ def plt_wl_rs(
     wl_river_stage_axis.set_ylabel("River Stage (m amsl)")
     wl_river_stage_axis.patch.set_visible(False)
     wl_river_stage_axis.grid(False)
+    wl_river_stage_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
     stage_frac = (wl_river_stages_filtered - stage_ymin) / (stage_ymax - stage_ymin)
     wl_river_stages_scaled = wl_ymin + stage_frac * (wl_ymax - wl_ymin)

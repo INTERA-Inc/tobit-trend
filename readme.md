@@ -15,6 +15,7 @@ project-root/
 │   ├── config.py
 │   ├── utils.py
 │   ├── preprocessing/
+│   │   ├── prepare_chromium_chemistry.py
 │   │   ├── calculate_distance_00.py
 │   │   ├── chemistry_import_01.py
 │   │   ├── water_level_import_02.py
@@ -26,6 +27,7 @@ project-root/
 │       └── generate_report.py
 └── environment.yml
 ```
+
 
 ## Installation
 

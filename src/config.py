@@ -53,7 +53,6 @@ class TrendConfig:
     trend_breaks_csv: Path
     no_rs_csv: Path
     kw_csv: Path
-    rum_csv: Path
     PRIOR_YEAR: int
     CUTOFFS: dict[str, str]
     KW_DATE1: str
@@ -122,7 +121,6 @@ class TrendConfig:
             trend_breaks_csv=Path(raw["tobit_trends"]["trend_breaks_csv"]),
             no_rs_csv=Path(raw["tobit_trends"]["no_rs_csv"]),
             kw_csv=Path(raw["tobit_trends"]["kw_csv"]),
-            rum_csv=Path(raw["tobit_trends"]["rum_csv"]),
             PRIOR_YEAR=int(raw["data_rules"]["PRIOR_YEAR"]),
             CUTOFFS=dict(raw["CUTOFFS"]),
             KW_DATE1=raw["KW_DATES"]["date1"],
@@ -136,19 +134,4 @@ class TrendConfig:
             gis_roads_shapefile=Path(raw["reporting"]["gis_roads_shapefile"]),
             gis_ou_shapefile=Path(raw["reporting"]["gis_ou_shapefile"]),
             map_crs=raw.get("reporting", {}).get("map_crs", "EPSG:2926"),
-            # dist_file=Path(raw["prep_wl"]["dist_file"]),
-            # stagedist_file=Path(raw["prep_wl"]["stagedist_file"]),
-            # cr_trend_parquet=Path(raw["prep_wl"]["cr_trend_parquet"]),
-            # wl_trends_flat_csv=Path(raw["prep_wl"]["wl_trends_flat_csv"]),
-            # wl_data_parquet=Path(raw["prep_wl"]["wl_data_parquet"]),
-            # system_wells_csv=Path(raw["prep_wl"]["system_wells_csv"]),
-            # trend_breaks_csv=Path(raw["prep_wl"]["trend_breaks_csv"]),
-            # no_rs_csv=Path(raw["prep_wl"]["no_rs_csv"]),
-            # kw_csv=Path(raw["prep_wl"]["kw_csv"]),
-            # rum_csv=Path(raw["prep_wl"]["rum_csv"]),
-            # output_csv=Path(raw["prep_wl"]["output_csv"]),
-            # # model
-            # dep=raw["model"]["dep"],
-            # indep=list(raw["model"]["indep"]),
-            # # prep rules
         )

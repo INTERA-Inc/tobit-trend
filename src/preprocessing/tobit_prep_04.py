@@ -292,7 +292,6 @@ def run_script04_prep(
     TREND_BREAKS_CSV: str,
     NO_RS_CSV: str,
     KW_CSV: str,
-    RUM_CSV: str,
     PRIOR_YEAR: int,
     CUTOFFS: dict[str, pd.Timestamp],
     KW_DATE1: pd.Timestamp = pd.Timestamp("2016-05-16"),
@@ -308,7 +307,6 @@ def run_script04_prep(
     newtrends = pd.read_csv(TREND_BREAKS_CSV)
     no_rs = pd.read_csv(NO_RS_CSV)
     kw = pd.read_csv(KW_CSV)
-    rum = pd.read_csv(RUM_CSV)
 
     # Standardize columns
     chem["NAME"] = safe_str(chem["NAME"])
@@ -342,10 +340,8 @@ def run_script04_prep(
     ## Add Trend Period for KW Remediation
     chem = apply_kw_extra_terms(chem, kw, KW_DATE1, KW_DATE2)
 
-    # NEWRS list (NoRS + RUM)
-    newrs_names = set(no_rs["NAME"].astype(str).tolist()) | set(
-        rum["NAME"].astype(str).tolist()
-    )
+    # NEWRS list = NoRS file (includes former RUM locs)
+    newrs_names = set(no_rs["NAME"].astype(str).str.strip().tolist())
 
     # Extract Water-Level Lag Time ULAG
     ulags = build_ulags(wl_trends)

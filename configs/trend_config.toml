@@ -3,7 +3,7 @@ name = "Tobit Trend Analysis"
 version = "0.1.0"
 
 [global_settings]
-run_ver = "v6_051226"
+run_ver = "v6_051526_rum"
 output_dir = "outputs"
 selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
 
@@ -49,9 +49,8 @@ WL_YEAR = 2024  # water level analysis year cutoff
 [tobit_trends] # script04 - CHEMISTRY TOBIT TREND ANALYSIS
 system_wells_csv = "input/SystemWells.csv"
 trend_breaks_csv = "input/TrendBreaks_v051824.csv"
-no_rs_csv = "input/NoRS.csv"
+no_rs_csv = "input/NoRS.csv" # all no RS locationsa, combined with RUM locations
 kw_csv = "input/KW_selected_locations.csv"
-rum_csv = "input/list_RUM2_wells_and_beyond_v4_021225.csv"
 r_script_path = "src/tools/crosscor_r_bridge.R"
 
 [model]
