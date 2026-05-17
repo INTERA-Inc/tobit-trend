@@ -34,6 +34,7 @@ FONT_SIZE_HEADER = 10
 FONT_SIZE_TEXT = 8
 FONT_SIZE_TABLE = 10
 FONT_SIZE_AXIS_LABELS = 9
+FONT_SIZE_LEGEND = 9
 
 # Colors
 COLOR_LIGHT_GRAY = "#E5E5E5"
@@ -834,7 +835,7 @@ def plt_wl_rs(
         wl_river_stages_scaled,
         linewidth=0.75,
         color=COLOR_LIGHT_BLUE,
-        label="River Stage",
+        label="_nolegend_",
         zorder=1,
     )
 
@@ -958,7 +959,9 @@ def plt_legend(
 
     legend_axis = page_fig.add_subplot(grid_spec[1, 3])
     legend_axis.set_axis_off()
-    legend_axis.legend(all_handles, all_labels, loc="center", frameon=False)
+    legend_axis.legend(
+        all_handles, all_labels, loc="center", frameon=False, fontsize=FONT_SIZE_LEGEND
+    )
 
 
 def generate_report(

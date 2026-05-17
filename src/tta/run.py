@@ -38,9 +38,10 @@ MODEL_LOG = "log"
 MODEL_INDEP = ["INTERP", "EVENT"]
 WL_LOG = "log"
 
-try:
 
-    def main() -> None:
+def main() -> None:
+    logger = None
+    try:
         args = parse_args()
         config = TrendConfig.from_toml(args.config)
         # Load config
@@ -266,12 +267,21 @@ try:
 
         logger.info("Step 05 complete: reports generated for OUs: %s", ", ".join(ous))
         logger.info("Workflow completed successfully")
-        logger.info("Total runtime: %.1f seconds", perf_counter() - run_start)
+        elapsed = perf_counter() - run_start
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        logger.info(
+            "Total runtime: %02d:%02d:%04.1f (hh:mm:ss)",
+            int(hours),
+            int(minutes),
+            seconds,
+        )
         logger.info("Output directory: %s", output_dir)
 
-except Exception as exc:
-    logger.exception("Workflow failed: %s", exc)
-    raise
+    except Exception as exc:
+        logger.exception("Workflow failed: %s", exc)
+        raise
+
 
 if __name__ == "__main__":
     main()

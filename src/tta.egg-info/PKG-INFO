@@ -41,7 +41,7 @@ project-root/
         ├── model/
         │   └── tobit_model_04_mod.py
         └── reporting/
-            └── generate_report.py
+            └── generate_report_05.py
 ```
 
 
