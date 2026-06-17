@@ -9,6 +9,7 @@ from time import perf_counter
 from tta.config import TrendConfig
 
 # load utils
+from tta.reporting.wl_regression_report_05 import wl_regression_report
 from tta.utils import (
     load_table,
     build_output_dir,
