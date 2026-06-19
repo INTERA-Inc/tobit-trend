@@ -235,6 +235,9 @@ def main() -> None:
             newrs_names=newrs_names,
         )
 
+        chem_rs.to_parquet(
+            output_dir / f"Cr_TrendData_{config.run_ver}.parquet", index=False
+        )
         df_tobit = pd.DataFrame(res)
         df_tobit.to_csv(output_dir / f"TTA_Results_{config.run_ver}.csv", index=False)
         logger.info(f"Step 04 complete: Tobit results rows={len(df_tobit)}")
