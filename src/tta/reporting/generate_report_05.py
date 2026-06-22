@@ -1,3 +1,5 @@
+import io
+import os
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -11,8 +13,10 @@ from matplotlib.axes import Axes
 from matplotlib.font_manager import FontProperties
 from matplotlib.ticker import FormatStrFormatter, LogLocator, NullFormatter
 from matplotlib.dates import YearLocator, DateFormatter
-from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 import matplotlib.patches as patches
+from concurrent.futures import ThreadPoolExecutor
+from pypdf import PdfReader, PdfWriter
 from typing import Tuple
 from pathlib import Path
 from tqdm import tqdm
@@ -85,6 +89,124 @@ def calculate_tobit_prediction(
     return pd.Series(pred, index=chem_term.index)
 
 
+def _render_well_page(args: tuple) -> bytes:
+    """
+    Worker: render one well's report page and return it as PDF bytes.
+
+    Uses ``Figure()`` (the matplotlib OO API) rather than ``plt.figure()`` so
+    that concurrent calls from a ``ThreadPoolExecutor`` do not touch pyplot's
+    global figure registry.  Each thread owns its own ``Figure`` and writes to
+    its own ``io.BytesIO`` buffer — no shared mutable state.
+
+    Parameters
+    ----------
+    args : tuple
+        ``(well, ifile_no_rs, ifile_wl_trends, ifile_chem_trends, gis_wells,
+        gis_well, gis_ou, gis_river, gis_roads, wl_wells_set, wl_rs_well,
+        chem_rs_well)``
+
+    Returns
+    -------
+    bytes
+        Single-page PDF rendered to memory.
+    """
+    (
+        well,
+        ifile_no_rs,
+        ifile_wl_trends,
+        ifile_chem_trends,
+        gis_wells,
+        gis_well,
+        gis_ou,
+        gis_river,
+        gis_roads,
+        wl_wells_set,
+        wl_rs_well,
+        chem_rs_well,
+    ) = args
+
+    wl_trends_well = ifile_wl_trends[ifile_wl_trends["KEY"] == well]
+    chem_trends_well = ifile_chem_trends.loc[ifile_chem_trends["WELL"] == well, "ITER"]
+
+    page_fig = Figure(figsize=FIGURE_SIZE)
+    FigureCanvasAgg(page_fig)  # attach canvas required for savefig()
+    grid_spec = GridSpec(
+        nrows=GRID_ROWS,
+        ncols=GRID_COLS,
+        wspace=GRID_WSPACE,
+        hspace=GRID_HSPACE,
+    )
+
+    plt_header(
+        ifile_no_rs,
+        ifile_wl_trends,
+        ifile_chem_trends,
+        well,
+        wl_trends_well,
+        chem_trends_well,
+        gis_well,
+        page_fig,
+        grid_spec,
+    )
+
+    plt_gis(
+        gis_wells,
+        gis_well,
+        gis_ou,
+        gis_river,
+        gis_roads,
+        page_fig,
+        grid_spec,
+    )
+
+    num_trend_equations = plt_regression(chem_trends_well, ifile_chem_trends, well, page_fig)
+
+    (
+        chem_dates,
+        chem_concentrations_axis,
+        chem_river_stage_axis,
+        chem_concentrations_axis2,
+    ) = plt_chem(
+        num_trend_equations,
+        wl_wells_set,
+        well,
+        chem_trends_well,
+        chem_rs_well,
+        ifile_chem_trends,
+        page_fig,
+        grid_spec,
+    )
+
+    wl_elevation_axis = None
+    wl_river_stage_axis = None
+    if well in wl_wells_set:
+        wl_elevation_axis, wl_river_stage_axis = plt_wl_rs(
+            wl_rs_well,
+            page_fig,
+            grid_spec,
+            chem_dates,
+            chem_river_stage_axis,
+        )
+
+    plt_legend(
+        page_fig,
+        grid_spec,
+        chem_concentrations_axis,
+        chem_concentrations_axis2,
+        wl_elevation_axis,
+        wl_river_stage_axis,
+    )
+
+    page_fig.subplots_adjust(left=FIGURE_LEFT_MARGIN, right=FIGURE_RIGHT_MARGIN)
+
+    buf = io.BytesIO()
+    page_fig.savefig(buf, format="pdf")
+    page_fig.clf()
+
+    buf.seek(0)
+    return buf.read()
+
+
 def plt_report(
     OUs: list[str],
     wells: pd.DataFrame,
@@ -100,103 +222,60 @@ def plt_report(
     ou_shapefile: Path,
     output_dir: Path,
     run_ver: str,
+    n_workers: int | None = None,
 ):
+    # Load and reproject GIS layers once before the well loop.
+    # gpd.read_file() is expensive; reading inside the well loop multiplied cost
+    # by N_wells (typically 100–300 reads per PDF run).
+    gis_river = gpd.read_file(river_shapefile)
+    gis_roads = gpd.read_file(roads_shapefile).to_crs(gis_river.crs)
+    gis_ous_full = gpd.read_file(ou_shapefile).to_crs(gis_river.crs)
+
+    n = (os.cpu_count() or 1) if n_workers is None else n_workers
+
     for ou in OUs:
         wells_ou = wells[wells["OU"] == ou]
         output_file = output_dir / f"TobitRegression_WLlag_{ou}_{run_ver}.pdf"
 
-        with PdfPages(output_file) as pdf:
-            well: str
-            for well in tqdm(
-                wells_ou["NAME"],
+        # Filter OU boundary once per OU, not once per well.
+        gis_ou = gis_ous_full[gis_ous_full["Name"] == ou]
+
+        # Build per-well argument tuples. DataFrames and GeoDataFrames are
+        # passed as references (threads share memory — no copying overhead).
+        args_iter = [
+            (
+                well,
+                ifile_no_rs,
+                ifile_wl_trends,
+                ifile_chem_trends,
+                gis_wells,
+                gis_wells[gis_wells["NAME"] == well],
+                gis_ou,
+                gis_river,
+                gis_roads,
+                wl_wells_set,
+                ifile_wl_rs[ifile_wl_rs["NAME"] == well],
+                ifile_chem_rs[ifile_chem_rs["NAME"] == well],
+            )
+            for well in wells_ou["NAME"]
+        ]
+
+        # Render pages in parallel; collect bytes in submission order.
+        # PdfWriter is used only in the main thread — no thread-safety concern.
+        writer = PdfWriter()
+        with ThreadPoolExecutor(max_workers=n) as executor:
+            for page_bytes in tqdm(
+                executor.map(_render_well_page, args_iter),
+                total=len(args_iter),
                 desc=f"Reporting {ou}",
                 unit="well",
                 leave=True,
             ):
-                wl_trends_well = ifile_wl_trends[ifile_wl_trends["KEY"] == well]
-                chem_trends_well = ifile_chem_trends.loc[
-                    ifile_chem_trends["WELL"] == well, "ITER"
-                ]
-                gis_well = gis_wells[gis_wells["NAME"] == well]
-                wl_rs_well = ifile_wl_rs[ifile_wl_rs["NAME"] == well]
-                chem_rs_well = ifile_chem_rs[ifile_chem_rs["NAME"] == well]
+                reader = PdfReader(io.BytesIO(page_bytes))
+                writer.add_page(reader.pages[0])
 
-                page_fig = plt.figure(figsize=FIGURE_SIZE)
-                grid_spec = GridSpec(
-                    nrows=GRID_ROWS,
-                    ncols=GRID_COLS,
-                    wspace=GRID_WSPACE,
-                    hspace=GRID_HSPACE,
-                )
-
-                plt_header(
-                    ifile_no_rs,
-                    ifile_wl_trends,
-                    ifile_chem_trends,
-                    well,
-                    wl_trends_well,
-                    chem_trends_well,
-                    gis_well,
-                    page_fig,
-                    grid_spec,
-                )
-
-                plt_gis(
-                    gis_wells,
-                    ou,
-                    gis_well,
-                    page_fig,
-                    grid_spec,
-                    river_shapefile,
-                    roads_shapefile,
-                    ou_shapefile,
-                )
-
-                num_trend_equations = plt_regression(
-                    chem_trends_well, ifile_chem_trends, well, page_fig
-                )
-
-                (
-                    chem_dates,
-                    chem_concentrations_axis,
-                    chem_river_stage_axis,
-                    chem_concentrations_axis2,
-                ) = plt_chem(
-                    num_trend_equations,
-                    wl_wells_set,
-                    well,
-                    chem_trends_well,
-                    chem_rs_well,
-                    ifile_chem_trends,
-                    page_fig,
-                    grid_spec,
-                )
-
-                wl_elevation_axis = None
-                wl_river_stage_axis = None
-                if well in wl_wells_set:
-                    wl_elevation_axis, wl_river_stage_axis = plt_wl_rs(
-                        wl_rs_well,
-                        page_fig,
-                        grid_spec,
-                        chem_dates,
-                        chem_river_stage_axis,
-                    )
-
-                plt_legend(
-                    page_fig,
-                    grid_spec,
-                    chem_concentrations_axis,
-                    chem_concentrations_axis2,
-                    wl_elevation_axis,
-                    wl_river_stage_axis,
-                )
-
-                page_fig.subplots_adjust(
-                    left=FIGURE_LEFT_MARGIN, right=FIGURE_RIGHT_MARGIN
-                )
-                pdf.savefig(page_fig)
-                plt.close(page_fig)
+        with open(output_file, "wb") as fout:
+            writer.write(fout)
 
 
 def plt_header(
@@ -224,7 +303,7 @@ def plt_header(
         0.5,
         0.925,
         f"""
-Distance to River: {round(gis_well.at[gis_well.index[0], "DIST"])} m
+Distance to River: {round(gis_well["DIST"].iloc[0]) if not gis_well.empty else "N/A"} m
 Number of Trends Calculated: {len(chem_trends_well)}
 """,
         ha="center",
@@ -375,27 +454,41 @@ Number of Trends Calculated: {len(chem_trends_well)}
 
 def plt_gis(
     gis_wells: gpd.GeoDataFrame,
-    ou: str,
     gis_well: gpd.GeoDataFrame,
+    gis_ou: gpd.GeoDataFrame,
+    gis_river: gpd.GeoDataFrame,
+    gis_roads: gpd.GeoDataFrame,
     page_fig: Figure,
     grid_spec: GridSpec,
-    river_shapefile: Path,
-    roads_shapefile: Path,
-    ou_shapefile: Path,
 ):
-    ifile_gis_highriv = gpd.read_file(river_shapefile)
-    ifile_gis_roads = gpd.read_file(roads_shapefile)
-    ifile_gis_ous = gpd.read_file(ou_shapefile)
-    gis_roads = ifile_gis_roads.to_crs(ifile_gis_highriv.crs)
-    ifile_gis_ous = ifile_gis_ous.to_crs(ifile_gis_highriv.crs)
-    gis_ou = ifile_gis_ous[ifile_gis_ous["Name"] == ou]
-    gis_ou = gis_ou.to_crs(ifile_gis_highriv.crs)
+    """
+    Render the site map panel for a single well page.
 
+    All GeoDataFrames must already be in the target CRS (caller's responsibility).
+    ``gis_ou`` must already be filtered to the current operational unit.
+
+    Parameters
+    ----------
+    gis_wells : gpd.GeoDataFrame
+        All wells in the current OU (background grey markers).
+    gis_well : gpd.GeoDataFrame
+        Single-row GeoDataFrame for the well being reported (red marker).
+    gis_ou : gpd.GeoDataFrame
+        OU boundary polygon, pre-filtered and in river CRS.
+    gis_river : gpd.GeoDataFrame
+        River shapefile GeoDataFrame in the reference CRS.
+    gis_roads : gpd.GeoDataFrame
+        Roads GeoDataFrame, reprojected to river CRS.
+    page_fig : Figure
+        Matplotlib figure to render into.
+    grid_spec : GridSpec
+        Grid layout for subplot placement.
+    """
     gis_axis = page_fig.add_subplot(grid_spec[1, 0:2])
     gis_roads.plot(
         ax=gis_axis, color=COLOR_LIGHT_GRAY, linewidth=1, markersize=50, zorder=1
     )
-    ifile_gis_highriv.plot(
+    gis_river.plot(
         ax=gis_axis,
         color=COLOR_LIGHT_GRAY,
         edgecolor=COLOR_BLACK,

@@ -192,7 +192,12 @@ def interp_rs(X: pd.DataFrame) -> pd.DataFrame:
     DT = DT.merge(X, on="EVENT", how="left", sort=False)
 
     DT["INTERP"] = DT["STAGE"].interpolate(method="linear", limit_direction="both")
-    DT["NAME"] = X["NAME"].dropna().iloc[0]
+    name_vals = X["NAME"].dropna()
+    if name_vals.empty:
+        raise ValueError(
+            f"interp_rs(): input X has no non-null NAME values; cannot assign well name."
+        )
+    DT["NAME"] = name_vals.iloc[0]
 
     return DT
 
@@ -384,6 +389,10 @@ def combine_data(X: pd.DataFrame, Y: pd.DataFrame) -> pd.DataFrame:
 
         out.append(TMP)
 
+    if not out:
+        return pd.DataFrame(
+            columns=["NAME", "EVENT", "WLE", "WL_UNITS", "TYPE", "RS_NAME", "INTERP", "RS_UNITS"]
+        )
     Y_COMB = pd.concat(out, ignore_index=True)
     Y_COMB = Y_COMB.rename(columns={"WL_NAME": "NAME"})
     return Y_COMB
@@ -402,6 +411,7 @@ def run_water_level_import(
     well: pd.DataFrame,
     screen: pd.DataFrame,
     yr: int,
+    trend_min_year: int = 2008,
 ) -> pd.DataFrame:
     # --Import River Stage Data--#
     STAGE = river_stage.copy()
@@ -429,7 +439,7 @@ def run_water_level_import(
     WLRS = []
     for _, X in WL.groupby("NAME", sort=False):
         # --Limit Trend Analysis to Data After 2008--#
-        if len(X) > 2 and X["EVENT"].dt.year.max() >= 2008:
+        if len(X) > 2 and X["EVENT"].dt.year.max() >= trend_min_year:
             WELL_NAME = X["NAME"].iloc[0]
 
             gauge_vals = STAGEDIST.loc[STAGEDIST["NAME"] == WELL_NAME, "STAGE"]

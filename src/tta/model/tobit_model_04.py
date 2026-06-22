@@ -1,19 +1,19 @@
 import os
-from dataclasses import dataclass
-from typing import Any, Optional, List, Dict, Tuple
-from tqdm import tqdm
-import pandas as pd
-import numpy as np
-import warnings
-from statsmodels.nonparametric.smoothers_lowess import lowess
-import tempfile
+import re
 import subprocess
+import tempfile
+import warnings
+from concurrent.futures import ProcessPoolExecutor
+from typing import Optional
+
+import numpy as np
+import pandas as pd
 import scipy
 from scipy.stats import norm
-import re
+from tqdm import tqdm
 
 
-def match_arg(value: Optional[str], choices: List[str], arg_name: str) -> str:
+def match_arg(value: Optional[str], choices: list[str], arg_name: str) -> str:
     """
     Minimal R-like match.arg for a scalar character argument.
     - exact match first
@@ -97,6 +97,38 @@ def _to_event_numeric_rstyle(series):
 
 
 def do_lag_r_exact(x, y, DEP, INDEP, MAXLAG, N, PND, r_script_path):
+    """
+    Estimate the optimal cross-correlation lag between chemistry and river stage.
+
+    Calls crosscor_r_bridge once with all lag values 0..MAXLAG and returns the
+    lag with the highest absolute CCF. Returns an empty LAG array if the well
+    has fewer than N observations or proportion of non-detects exceeds PND.
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Chemistry data for the current well/TERM.
+    y : pd.DataFrame
+        Full water-level / stage interpolation data for the well.
+    DEP : str
+        Dependent variable column name (e.g. ``"VAL"``).
+    INDEP : str
+        Independent (stage) column name (e.g. ``"INTERP"``).
+    MAXLAG : int
+        Maximum lag (days) to test.
+    N : int
+        Minimum number of observations required to compute the lag.
+    PND : float
+        Maximum allowed proportion of non-detects.
+    r_script_path : str | Path
+        Path to ``crosscor_r_bridge.R``.
+
+    Returns
+    -------
+    dict with keys:
+        ``"COD"`` – DataFrame of (acf, lag) pairs across all tested lags.
+        ``"LAG"`` – Array of lag value(s) with maximum |acf|; empty if skipped.
+    """
     X_0 = x.loc[~pd.isna(x[DEP])].copy()
     n = len(X_0)
     PNDS = X_0["NDS"].sum() / n if n > 0 else np.nan
@@ -106,13 +138,7 @@ def do_lag_r_exact(x, y, DEP, INDEP, MAXLAG, N, PND, r_script_path):
         x2 = _to_event_numeric_rstyle(y["EVENT"])
         y1 = X_0[DEP].to_numpy()
         y2 = y[INDEP].to_numpy()
-
-        parts = []
-        for lag in range(0, int(MAXLAG) + 1):
-            part = crosscor_r_bridge(x1, y1, x2, y2, lag, r_script_path)
-            parts.append(part)
-
-        ccf = pd.concat(parts, ignore_index=True)
+        ccf = crosscor_r_bridge(x1, y1, x2, y2, range(0, int(MAXLAG) + 1), r_script_path)
         max_abs = np.nanmax(np.abs(ccf["acf"].to_numpy()))
         lag = ccf.loc[np.abs(ccf["acf"]) == max_abs, "lag"].to_numpy()
     else:
@@ -122,31 +148,47 @@ def do_lag_r_exact(x, y, DEP, INDEP, MAXLAG, N, PND, r_script_path):
     return {"COD": ccf, "LAG": lag}
 
 
-def _tricube(u):
-    u = np.asarray(u, dtype=float)
-    out = np.zeros_like(u, dtype=float)
-    m = np.abs(u) < 1
-    out[m] = (1 - np.abs(u[m]) ** 3) ** 3
-    return out
+def crosscor_r_bridge(x1, y1, x2, y2, lags, r_script_path):
+    """
+    Call the R cross-correlation script for all lag values in a single subprocess.
 
+    The series (x1/y1, x2/y2) and the lag vector are written as columns in one
+    CSV; they may differ in length and are NaN-padded to match. The R script
+    loops over the lags internally and returns one row per lag.
 
-def crosscor_r_bridge(x1, y1, x2, y2, lag, r_script_path):
+    Parameters
+    ----------
+    x1, y1 : array-like
+        Numeric day-indices and values for series 1 (chemistry).
+    x2, y2 : array-like
+        Numeric day-indices and values for series 2 (river stage).
+    lags : iterable of int
+        Lag values (days) to test, e.g. ``range(0, MAXLAG + 1)``.
+    r_script_path : str | Path
+        Path to ``crosscor_r_bridge.R``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns ``acf`` and ``lag``, one row per tested lag.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         infile = os.path.join(tmpdir, "in.csv")
         outfile = os.path.join(tmpdir, "out.csv")
 
         n1 = len(x1)
         n2 = len(x2)
-        n = max(n1, n2)
+        lags_list = list(lags)
+        n_lags = len(lags_list)
+        n = max(n1, n2, n_lags)
 
         df = pd.DataFrame(
             {
-                "id": [1] * n,
-                "x1": list(x1) + [np.nan] * (n - n1),
-                "y1": list(y1) + [np.nan] * (n - n1),
-                "x2": list(x2) + [np.nan] * (n - n2),
-                "y2": list(y2) + [np.nan] * (n - n2),
-                "lag": [lag] * n,
+                "x1":  list(x1)  + [np.nan] * (n - n1),
+                "y1":  list(y1)  + [np.nan] * (n - n1),
+                "x2":  list(x2)  + [np.nan] * (n - n2),
+                "y2":  list(y2)  + [np.nan] * (n - n2),
+                "lag": lags_list + [np.nan] * (n - n_lags),
             }
         )
         df.to_csv(infile, index=False)
@@ -162,11 +204,35 @@ def crosscor_r_bridge(x1, y1, x2, y2, lag, r_script_path):
                 f"STDERR:\n{res.stderr}"
             )
 
-        out = pd.read_csv(outfile)
-        return out
+        return pd.read_csv(outfile)
 
 
 def censreg_ll_test(beta, X, y, left, right=None):
+    """
+    Per-observation log-likelihood for the censored normal model.
+
+    Left-censored observations contribute ``log Φ((y − Xβ) / σ)``,
+    uncensored observations contribute the normal log-density minus ``log σ``,
+    and right-censored observations contribute ``log(1 − Φ(...))``.
+
+    Parameters
+    ----------
+    beta : array-like, shape (p+1,)
+        Coefficients followed by ``log(σ)`` as the last element.
+    X : array-like, shape (n, p)
+        Design matrix.
+    y : array-like, shape (n,)
+        Response vector (possibly log-transformed).
+    left : array-like of bool, shape (n,)
+        True for left-censored (non-detect) observations.
+    right : array-like of bool or None, shape (n,)
+        True for right-censored observations. Defaults to all False.
+
+    Returns
+    -------
+    np.ndarray, shape (n,)
+        Per-observation log-likelihood contributions.
+    """
     beta = np.asarray(beta, dtype=float)
     X = np.asarray(X, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -192,6 +258,24 @@ def censreg_ll_test(beta, X, y, left, right=None):
 
 
 def standardize_rstyle(x):
+    """
+    Column-wise standardization matching R's ``scale()``.
+
+    Columns with zero or NaN standard deviation are left at their original
+    values (mu=0, sigma=1) to avoid division by zero.
+
+    Parameters
+    ----------
+    x : array-like, shape (n,) or (n, p)
+        Data to standardize.
+
+    Returns
+    -------
+    dict with keys:
+        ``"Z"`` – Standardized array, shape (n, p).
+        ``"mu"`` – Column means, shape (p,).
+        ``"sigma"`` – Column standard deviations (ddof=1), shape (p,).
+    """
     z = np.asarray(x, dtype=float)
     if z.ndim == 1:
         z = z.reshape(-1, 1)
@@ -225,7 +309,34 @@ def loglik_attr_rstyle(
     returnHessian=True,
     **kwargs,
 ):
+    """
+    Port of R ``maxLik::logLik``-attribute wrapper used by ``maxNR``.
 
+    Evaluates ``fnOrig`` at ``theta`` and computes the gradient and Hessian
+    (numerically if analytic versions are not supplied). Fixed parameters are
+    masked to NaN in the gradient and Hessian.
+
+    Parameters
+    ----------
+    theta : array-like
+        Parameter vector.
+    fnOrig : callable
+        Per-observation log-likelihood function.
+    gradOrig : callable or None
+        Analytic gradient; numeric approximation used if None.
+    hessOrig : callable or None
+        Analytic Hessian; numeric approximation used if None.
+    fixed : array-like of bool or None
+        Mask of fixed (non-optimised) parameters.
+    sumObs : bool
+        If True, return scalar log-likelihood instead of per-observation vector.
+    returnHessian : bool
+        If False, skip Hessian computation.
+
+    Returns
+    -------
+    dict with keys ``"value"``, ``"gradient"``, ``"hessian"``.
+    """
     theta = np.asarray(theta, dtype=float)
     nParam = len(theta)
 
@@ -292,6 +403,24 @@ def loglik_attr_rstyle(
 
 
 def numeric_gradient_rstyle(f, t0, eps=1e-6, fixed=None, **kwargs):
+    """
+    Central-difference numerical gradient, shape (nVal, nParam).
+
+    Parameters
+    ----------
+    f : callable
+        Function returning a 1-D array of length nVal.
+    t0 : array-like
+        Parameter vector at which to evaluate the gradient.
+    eps : float
+        Step size for finite differences.
+    fixed : array-like of bool or None
+        Fixed parameters are skipped and left as NaN.
+
+    Returns
+    -------
+    np.ndarray, shape (nVal, nParam)
+    """
     t0 = np.asarray(t0, dtype=float)
     n = len(t0)
     f0 = f(t0, **kwargs)
@@ -319,6 +448,23 @@ def numeric_gradient_rstyle(f, t0, eps=1e-6, fixed=None, **kwargs):
 
 
 def prepare_fixed_rstyle(start, activePar=None, fixed=None):
+    """
+    Port of R ``maxLik::prepareFixed``; returns a boolean mask of fixed params.
+
+    Parameters
+    ----------
+    start : array-like
+        Initial parameter vector (used to determine length).
+    activePar : array-like or None
+        Boolean or integer indices of active (non-fixed) parameters.
+    fixed : array-like or None
+        Boolean mask or integer indices of fixed parameters.
+
+    Returns
+    -------
+    np.ndarray of bool, shape (nParam,)
+        True where a parameter is fixed.
+    """
     start = np.asarray(start, dtype=float)
     nParam = len(start)
 
@@ -383,6 +529,20 @@ def prepare_fixed_rstyle(start, activePar=None, fixed=None):
 
 
 def sum_gradients_rstyle(gr, nParam):
+    """
+    Sum per-observation gradients to a parameter-length vector.
+
+    Parameters
+    ----------
+    gr : array-like
+        Gradient array, either shape (nObs, nParam) or (nParam,).
+    nParam : int
+        Number of parameters.
+
+    Returns
+    -------
+    np.ndarray, shape (nParam,)
+    """
     gr = np.asarray(gr)
 
     if gr.ndim > 1:
@@ -395,6 +555,22 @@ def sum_gradients_rstyle(gr, nParam):
 
 
 def sum_keep_attr_rstyle(x, keepNames=False, na_rm=False):
+    """
+    Scalar sum of an array, optionally ignoring NaN; port of R ``sum()``.
+
+    Parameters
+    ----------
+    x : array-like
+        Values to sum.
+    keepNames : bool
+        Unused; present for API compatibility with the R port.
+    na_rm : bool
+        If True, NaN values are ignored (maps to R ``na.rm=TRUE``).
+
+    Returns
+    -------
+    float
+    """
     x_arr = np.asarray(x)
 
     if na_rm:
@@ -406,6 +582,22 @@ def sum_keep_attr_rstyle(x, keepNames=False, na_rm=False):
 
 
 def observation_gradient_rstyle(g, nParam):
+    """
+    Return True if ``g`` is a per-observation gradient matrix (nObs × nParam).
+
+    Port of R ``maxLik::observationGradient``.
+
+    Parameters
+    ----------
+    g : array-like
+        Gradient array to inspect.
+    nParam : int
+        Number of parameters.
+
+    Returns
+    -------
+    bool
+    """
     g = np.asarray(g)
 
     if g.ndim == 1:
@@ -420,6 +612,18 @@ def observation_gradient_rstyle(g, nParam):
 
 
 def maxim_message_rstyle(code):
+    """
+    Human-readable convergence message for a ``maxNR`` termination code.
+
+    Parameters
+    ----------
+    code : int
+        Termination code returned by ``maxnr_compute_rstyle``.
+
+    Returns
+    -------
+    str
+    """
     messages = {
         1: "gradient close to zero",
         2: "successive function values within tolerance limit",
@@ -435,48 +639,29 @@ def maxim_message_rstyle(code):
     return messages.get(code, f"Code {code}")
 
 
-import inspect
-
-
-def check_func_args_rstyle(func, checkArgs, argName, funcName):
-    if not callable(func):
-        raise ValueError(
-            f"argument '{argName}' of function '{funcName}' is not a function"
-        )
-
-    sig = inspect.signature(func)
-    funcArgs = list(sig.parameters.keys())
-
-    if len(funcArgs) > 1:
-        test_args = funcArgs[1:]
-
-        matches = []
-        for a in test_args:
-            matched = [c for c in checkArgs if c.startswith(a)]
-            matches.append((a, matched))
-
-        hit = [a for a, m in matches if len(m) > 0]
-
-        if len(hit) == 1:
-            raise ValueError(
-                f"argument '{hit[0]}' of the function specified in argument "
-                f"'{argName}' of function '{funcName}' (partially) matches the "
-                f"argument names of function '{funcName}'. Please change the "
-                f"name of this argument"
-            )
-        elif len(hit) > 1:
-            joined = "', '".join(hit)
-            raise ValueError(
-                f"arguments '{joined}' of the function specified in argument "
-                f"'{argName}' of function '{funcName}' (partially) match the "
-                f"argument names of function '{funcName}'. Please change the "
-                f"names of these arguments"
-            )
-
-    return None
-
-
 def maxnr_init_rstyle(fn, start, fixed=None, bhhhHessian=False, **kwargs):
+    """
+    Evaluate the log-likelihood, gradient, and Hessian at the starting point.
+
+    Returns an early-exit dict (with ``"code"`` key) if the initial value is
+    NaN or +Inf, otherwise returns the initialisation state for the main loop.
+
+    Parameters
+    ----------
+    fn : callable
+        Log-likelihood wrapper (``loglik_attr_rstyle``).
+    start : array-like
+        Initial parameter vector.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+    bhhhHessian : bool
+        If True, use BHHH outer-product Hessian (not currently used).
+
+    Returns
+    -------
+    dict
+        Either ``{"code": int, ...}`` for early exit, or the init state dict.
+    """
     start = np.asarray(start, dtype=float)
     nParam = len(start)
 
@@ -549,6 +734,26 @@ def maxnr_init_rstyle(fn, start, fixed=None, bhhhHessian=False, **kwargs):
 
 
 def numeric_hessian_rstyle(f, grad=None, t0=None, eps=1e-6, fixed=None, **kwargs):
+    """
+    Numerical Hessian via central differences on the gradient.
+
+    Parameters
+    ----------
+    f : callable
+        Scalar log-likelihood function (used only if ``grad`` is None).
+    grad : callable or None
+        Gradient function; required — direct Hessian path is not implemented.
+    t0 : array-like
+        Parameter vector at which to evaluate.
+    eps : float
+        Step size for finite differences.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+
+    Returns
+    -------
+    np.ndarray, shape (nParam, nParam)
+    """
     t0 = np.asarray(t0, dtype=float)
 
     if fixed is None:
@@ -567,6 +772,31 @@ def numeric_hessian_rstyle(f, grad=None, t0=None, eps=1e-6, fixed=None, **kwargs
 
 
 def maxnr_one_step_rstyle(start0, f0, G0, H0, fixed=None, lambdatol=1e-6, qrtol=1e-10):
+    """
+    Compute one Newton-Raphson step with ridge regularisation if needed.
+
+    If the active Hessian is not negative-definite, a diagonal ridge
+    (``lambda * I``) is added until it is, matching R's ``maxNR`` behaviour.
+
+    Parameters
+    ----------
+    start0 : array-like
+        Current parameter vector.
+    f0 : float
+        Current log-likelihood.
+    G0 : array-like
+        Current gradient.
+    H0 : array-like
+        Current Hessian.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+    lambdatol, qrtol : float
+        Ridge and rank tolerances.
+
+    Returns
+    -------
+    dict with keys ``"lambda"``, ``"step"``, ``"amount"``, ``"start1"``, ``"H"``.
+    """
     start0 = np.asarray(start0, dtype=float)
     G0 = np.asarray(G0, dtype=float)
     H0 = np.asarray(H0, dtype=float)
@@ -618,6 +848,33 @@ def maxnr_one_step_rstyle(start0, f0, G0, H0, fixed=None, lambdatol=1e-6, qrtol=
 def maxnr_backtrack_rstyle(
     fn, start0, f0, amount, fixed=None, returnHessian=True, steptol=1e-10, **kwargs
 ):
+    """
+    Backtracking line search for the Newton-Raphson step.
+
+    Halves the step size until the log-likelihood improves or the step falls
+    below ``steptol``. If no improvement is found, returns the current point.
+
+    Parameters
+    ----------
+    fn : callable
+        Log-likelihood wrapper.
+    start0 : array-like
+        Current parameter vector.
+    f0 : float or array-like
+        Current log-likelihood value(s).
+    amount : array-like
+        Newton step direction.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+    returnHessian : bool
+        Whether to request the Hessian from ``fn``.
+    steptol : float
+        Minimum acceptable step size.
+
+    Returns
+    -------
+    dict with keys ``"step"``, ``"start1"``, ``"f1"``, ``"last_step"``.
+    """
     start0 = np.asarray(start0, dtype=float)
     amount = np.asarray(amount, dtype=float)
 
@@ -663,6 +920,30 @@ def maxnr_termination_code_rstyle(
     tol=1e-8,
     reltol=np.sqrt(np.finfo(float).eps),
 ):
+    """
+    Check Newton-Raphson termination criteria; return a code or None.
+
+    Returns None if none of the stopping criteria are met (continue iterating).
+    Codes: 1=gradient close to zero, 2=function value tolerance, 3=step too
+    small, 5=infinite log-likelihood.
+
+    Parameters
+    ----------
+    f0, f1 : float or array-like
+        Log-likelihood at previous and current iteration.
+    G1 : array-like
+        Gradient at current iteration.
+    step : float
+        Accepted step size from backtracking.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+    gradtol, tol, reltol : float
+        Convergence tolerances.
+
+    Returns
+    -------
+    int or None
+    """
     G1 = np.asarray(G1, dtype=float)
 
     if fixed is None:
@@ -706,7 +987,40 @@ def maxnr_compute_rstyle(
     fixed=None,
     **kwargs,
 ):
+    """
+    Newton-Raphson maximisation; port of R ``maxLik::maxNR``.
 
+    Iterates Newton steps with backtracking until a termination criterion is
+    met or ``iterlim`` iterations are exhausted.
+
+    Parameters
+    ----------
+    fn : callable
+        Log-likelihood wrapper returning ``{"value", "gradient", "hessian"}``.
+    start : array-like
+        Initial parameter vector.
+    print_level : int
+        Unused; retained for API compatibility with the R port.
+    tol, reltol, gradtol, steptol : float
+        Convergence tolerances.
+    lambdatol, qrtol : float
+        Ridge and rank tolerances for the one-step solver.
+    iterlim : int
+        Maximum number of iterations.
+    finalHessian : bool
+        If True, include the Hessian in the return dict.
+    bhhhHessian : bool
+        Not implemented; present for API compatibility.
+    fixed : array-like of bool or None
+        Fixed parameter mask.
+
+    Returns
+    -------
+    dict with keys:
+        ``"maximum"``, ``"estimate"``, ``"gradient"``, ``"hessian"``,
+        ``"code"``, ``"message"``, ``"last_step"``, ``"fixed"``,
+        ``"iterations"``, ``"type"``.
+    """
     init = maxnr_init_rstyle(
         fn=fn, start=start, fixed=fixed, bhhhHessian=bhhhHessian, **kwargs
     )
@@ -812,6 +1126,38 @@ def all_vars_rstyle(formula_text: str):
 def censreg_fit_rstyle(
     formula_text, data, left, right=None, start=None, logLikOnly=False
 ):
+    """
+    Fit a censored-normal (Tobit) regression; port of R ``censReg::censReg``.
+
+    Standardises response and predictors before MLE, then back-transforms
+    the estimates to the original scale. The dependent variable is
+    log-transformed when ``formula_text`` starts with ``"log("`` or
+    ``"log10("``.
+
+    Parameters
+    ----------
+    formula_text : str
+        Formula string, e.g. ``"log(VAL)~INTERP+EVENT"``.
+    data : pd.DataFrame
+        Data containing all variables referenced in the formula.
+        ``"EVENT"`` columns are converted to numeric days since 1970-01-01.
+    left : array-like of bool
+        True for left-censored (non-detect) observations.
+    right : array-like of bool or None
+        True for right-censored observations. Defaults to all False.
+    start : None
+        Custom start values; not yet implemented.
+    logLikOnly : bool
+        If True, return only the per-observation log-likelihood at the OLS
+        starting point (used for testing).
+
+    Returns
+    -------
+    dict
+        Fitted model containing ``"estimate"``, ``"coefficients"``,
+        ``"varcovar"``, ``"coef_table"``, ``"maximum"``, ``"nObs"``,
+        ``"fitted.values"``, ``"residuals"``, ``"df.residual"``, and others.
+    """
     if right is None:
         right = np.zeros(len(data), dtype=bool)
     else:
@@ -935,6 +1281,28 @@ def censreg_fit_rstyle(
 
 
 def unstandardize_censreg_estimate_rstyle(estimate0, x_std, y_std):
+    """
+    Back-transform standardized Tobit estimates to the original scale.
+
+    Port of the unstandardization step in R ``censReg::censReg``.
+    The intercept is adjusted to absorb the effect of mean-centering all
+    predictors; slopes are rescaled by ``y_sigma / x_sigma_j``; and
+    ``logSigma`` is shifted by ``log(y_sigma)``.
+
+    Parameters
+    ----------
+    estimate0 : array-like, shape (p+1,)
+        Standardized estimates, last element is ``logSigma``.
+    x_std : dict
+        ``{"mu": ..., "sigma": ...}`` from ``standardize_rstyle`` on X.
+    y_std : dict
+        ``{"mu": ..., "sigma": ...}`` from ``standardize_rstyle`` on y.
+
+    Returns
+    -------
+    np.ndarray, shape (p+1,)
+        Estimates on the original (unstandardized) scale.
+    """
     estimate0 = np.asarray(estimate0, dtype=float)
     p = len(estimate0)
 
@@ -960,6 +1328,34 @@ def unstandardize_censreg_estimate_rstyle(estimate0, x_std, y_std):
 
 
 def run_tobit_rstyle(x, DEP, FORM, LOG, N, PND):
+    """
+    Fit all Tobit model variants for a single well/TERM.
+
+    Fits the full model (``FORM``), the intercept-only null, and (when FORM
+    has two predictors) the INTERP-only and EVENT-only single-covariate
+    models. Returns ``np.nan`` for all four if the minimum observations or
+    maximum non-detect proportion criteria are not met.
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Chemistry data for one well/TERM, with ``DEP`` and ``"NDS"`` columns.
+    DEP : str
+        Dependent variable column name.
+    FORM : str
+        Full model formula string, e.g. ``"log(VAL)~INTERP+EVENT"``.
+    LOG : str
+        Log transformation: ``"log"``, ``"log10"``, or ``"none"``.
+    N : int
+        Minimum number of non-missing observations.
+    PND : float
+        Maximum allowed proportion of non-detects.
+
+    Returns
+    -------
+    dict with keys ``"CEN"``, ``"CEN_0"``, ``"CEN_2"``, ``"CEN_3"``.
+        Each value is either a fitted model dict or ``np.nan``.
+    """
     X_0 = x.loc[~pd.isna(x[DEP])].copy()
     TERMS = all_vars_rstyle(FORM)
 
@@ -1035,6 +1431,35 @@ def run_tobit_rstyle(x, DEP, FORM, LOG, N, PND):
 
 
 def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
+    """
+    Summarise a fitted Tobit result into a flat results dict.
+
+    Computes the likelihood-ratio test (``p_trend``), AIC/BIC for all model
+    variants, and extracts coefficients and standard errors.
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Chemistry data for the well/TERM (used only for observation counts).
+    y : dict
+        Output of ``run_tobit_rstyle``: keys ``"CEN"``, ``"CEN_0"``, etc.
+    DEP : str
+        Dependent variable column name.
+    INDEP : list of str
+        Independent variable names (length 1 or 2).
+    LAG : float
+        Applied lag (days).
+    MODEL : str
+        Model label written to the ``"MODEL"`` output column.
+    ITER : int or None
+        TERM index written to the ``"ITER"`` output column.
+
+    Returns
+    -------
+    dict
+        Flat results row containing all output columns (p_trend, AIC, BIC,
+        beta_*, se_*, p_*, fit_ok, etc.).
+    """
     NM = x["NAME"].iloc[0] if len(x) else None
     x_nonmiss = x.loc[~pd.isna(x[DEP])].copy()
 
@@ -1258,6 +1683,24 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
 
 
 def lag_col_rstyle(X, LAG):
+    """
+    Shift a 1-D array by LAG positions, filling introduced positions with NaN.
+
+    A positive LAG shifts the series forward (head filled with NaN), matching
+    R's ``dplyr::lag(x, n=LAG)``. A negative LAG shifts backward (tail filled
+    with NaN).
+
+    Parameters
+    ----------
+    X : array-like
+        Input series.
+    LAG : int or float
+        Number of positions to shift. 0 or NaN returns a copy unchanged.
+
+    Returns
+    -------
+    np.ndarray
+    """
     X = np.asarray(X, dtype=float)
 
     if LAG == 0 or np.isnan(LAG):
@@ -1272,101 +1715,166 @@ def lag_col_rstyle(X, LAG):
         return np.concatenate([X[LAG:], np.full(LAG, np.nan)])
 
 
-def do_tobit_rstyle(
-    x, DEP, INDEP, LOG, MAXLAG, N, PND, r_script_path, ulags=None, newrs_names=None
-):
-    results = []
+def _process_well_tobit(args: tuple) -> list:
+    """
+    Worker for parallel Tobit trend analysis.
 
-    well_count = x["NAME"].dropna().nunique()
+    Processes one well across all its TERMs. Must be a module-level function
+    so that the Windows ``spawn`` multiprocessing context can pickle it.
 
-    if x.empty:
-        return results
+    Parameters
+    ----------
+    args : tuple
+        ``(name, df_full, DEP, INDEP, LOG, MAXLAG, N, PND, r_script_path,
+        ulags, newrs_names)``
 
-    names = x["NAME"].dropna().unique()
+    Returns
+    -------
+    list of dict
+        One result dict per TERM (as returned by ``extract_model_rstyle``).
+    """
+    name, df_full, DEP, INDEP, LOG, MAXLAG, N, PND, r_script_path, ulags, newrs_names = args
 
-    with tqdm(names, total=well_count, desc="Tobit analysis", unit="well") as pbar:
-        for well_curr, name in enumerate(pbar, start=1):
-            df_full = x[x["NAME"] == name].copy()
+    ulag_applied = ulags is not None and name in ulags and pd.notna(ulags[name])
+    is_newrs = newrs_names is not None and name in newrs_names
 
-            ulag_applied = ulags is not None and name in ulags and pd.notna(ulags[name])
-            is_newrs = newrs_names is not None and name in newrs_names
+    well_results = []
+    for term in sorted(pd.Series(df_full["TERM"]).dropna().unique()):
+        df_term_raw = df_full[df_full["TERM"] == term].copy()
 
-            pbar.set_postfix(
-                current=name,
-                done=f"{well_curr}/{well_count}",
-                ULAG=ulag_applied,
-            )
-
-            for term in sorted(pd.Series(df_full["TERM"]).dropna().unique()):
-                df_term_raw = df_full[df_full["TERM"] == term].copy()
-
-                if is_newrs:
-                    lag_scalar = 0
-                    df_term = df_term_raw.copy()
-                    indep_term = ["EVENT"]
-                else:
-                    if ulag_applied:
-                        lag = ulags[name]
-                    else:
-                        lag_out = do_lag_r_exact(
-                            df_term_raw,
-                            df_full,
-                            DEP=DEP,
-                            INDEP=INDEP[0],
-                            MAXLAG=MAXLAG,
-                            N=N,
-                            PND=PND,
-                            r_script_path=r_script_path,
-                        )
-                        lag = lag_out["LAG"]
-
-                    if isinstance(lag, (list, tuple, np.ndarray, pd.Series)):
-                        lag_scalar = lag[0] if len(lag) > 0 else np.nan
-                    else:
-                        lag_scalar = lag
-
-                    df_lag = df_full.copy()
-                    if pd.notna(lag_scalar) and lag_scalar > 0:
-                        df_lag["INTERP"] = lag_col_rstyle(
-                            df_lag["INTERP"].to_numpy(), -lag_scalar
-                        )
-
-                    df_term = df_lag[df_lag["TERM"] == term].copy()
-
-                    if pd.notna(lag_scalar) and lag_scalar > 0:
-                        df_term = df_term.loc[~pd.isna(df_term["INTERP"])].copy()
-
-                    indep_term = ["INTERP", "EVENT"]
-
-                FORM = create_formula_rstyle(DEP, indep_term, LOG)
-
-                tobit_out = run_tobit_rstyle(
-                    x=df_term,
+        if is_newrs:
+            lag_scalar = 0
+            df_term = df_term_raw.copy()
+            indep_term = ["EVENT"]
+        else:
+            if ulag_applied:
+                lag = ulags[name]
+            else:
+                lag_out = do_lag_r_exact(
+                    df_term_raw,
+                    df_full,
                     DEP=DEP,
-                    FORM=FORM,
-                    LOG=LOG,
+                    INDEP=INDEP[0],
+                    MAXLAG=MAXLAG,
                     N=N,
                     PND=PND,
+                    r_script_path=r_script_path,
                 )
+                lag = lag_out["LAG"]
 
-                model = extract_model_rstyle(
-                    x=df_term,
-                    y=tobit_out,
-                    DEP=DEP,
-                    INDEP=indep_term,
-                    LAG=lag_scalar,
-                    ITER=int(term),
-                )
+            if isinstance(lag, (list, tuple, np.ndarray, pd.Series)):
+                lag_scalar = lag[0] if len(lag) > 0 else np.nan
+            else:
+                lag_scalar = lag
 
-                results.append(model)
+            df_lag = df_full.copy()
+            if pd.notna(lag_scalar) and lag_scalar > 0:
+                df_lag["INTERP"] = lag_col_rstyle(df_lag["INTERP"].to_numpy(), -lag_scalar)
+
+            df_term = df_lag[df_lag["TERM"] == term].copy()
+
+            if pd.notna(lag_scalar) and lag_scalar > 0:
+                df_term = df_term.loc[~pd.isna(df_term["INTERP"])].copy()
+
+            indep_term = ["INTERP", "EVENT"]
+
+        FORM = create_formula_rstyle(DEP, indep_term, LOG)
+
+        tobit_out = run_tobit_rstyle(x=df_term, DEP=DEP, FORM=FORM, LOG=LOG, N=N, PND=PND)
+
+        model = extract_model_rstyle(
+            x=df_term,
+            y=tobit_out,
+            DEP=DEP,
+            INDEP=indep_term,
+            LAG=lag_scalar,
+            ITER=int(term),
+        )
+
+        well_results.append(model)
+
+    return well_results
+
+
+def do_tobit_rstyle(
+    x,
+    DEP,
+    INDEP,
+    LOG,
+    MAXLAG,
+    N,
+    PND,
+    r_script_path,
+    ulags=None,
+    newrs_names=None,
+    n_workers: Optional[int] = None,
+):
+    """
+    Run Tobit trend analysis for every well/TERM combination in ``x`` in parallel.
+
+    Each well (and all its TERMs) is processed by an independent
+    ``ProcessPoolExecutor`` worker. Results are extended in the same order as
+    the well name iteration.
+
+    Parameters
+    ----------
+    x : pd.DataFrame
+        Chemistry data with columns ``NAME``, ``TERM``, ``DEP``, ``NDS``,
+        ``INTERP``, ``EVENT``.
+    DEP : str
+        Dependent variable column name (e.g. ``"VAL"``).
+    INDEP : list of str
+        Independent variable names, e.g. ``["INTERP", "EVENT"]``.
+    LOG : str
+        Log transformation: ``"log"``, ``"log10"``, or ``"none"``.
+    MAXLAG : int
+        Maximum lag (days) to test when no pre-computed lag is available.
+    N : int
+        Minimum number of observations required for model fitting.
+    PND : float
+        Maximum allowed proportion of non-detects.
+    r_script_path : str | Path
+        Path to ``crosscor_r_bridge.R``.
+    ulags : dict or None
+        Mapping of well name → pre-computed lag (days). Wells present in this
+        dict skip the cross-correlation step.
+    newrs_names : set or None
+        Well names fitted with EVENT-only model and lag=0.
+    n_workers : int or None
+        Number of parallel worker processes. Defaults to ``os.cpu_count()``.
+
+    Returns
+    -------
+    list of dict
+        One result dict per well/TERM (as returned by ``extract_model_rstyle``).
+    """
+    if x.empty:
+        return []
+
+    names = x["NAME"].dropna().unique()
+    n = min(len(names), os.cpu_count() or 1) if n_workers is None else n_workers
+
+    args_iter = [
+        (
+            name,
+            x[x["NAME"] == name].copy(),
+            DEP, INDEP, LOG, MAXLAG, N, PND, r_script_path,
+            ulags, newrs_names,
+        )
+        for name in names
+    ]
+
+    results: list = []
+    with ProcessPoolExecutor(max_workers=n) as executor:
+        for well_results in tqdm(
+            executor.map(_process_well_tobit, args_iter),
+            total=len(names),
+            desc="Tobit analysis",
+            unit="well",
+        ):
+            results.extend(well_results)
 
     return results
-
-
-def export_res_to_csv(res, csv_path):
-    df = pd.DataFrame(res)
-    df.to_csv(csv_path, index=False)
-    return df
 
 
 def compute_varcovar_rstyle(hessian0, x_std, y_std):
@@ -1429,93 +1937,3 @@ def coefficient_pvalues_rstyle(estimate, varcovar, param_names):
     return out
 
 
-def merge_python_r(py_df, r_csv_path):
-    r_df = pd.read_csv(r_csv_path)
-
-    keep_r = [
-        "KEY",
-        "WELL",
-        "ITER",
-        "LAG",
-        "p_trend",
-        "p_interp",
-        "p_event",
-        "AIC",
-        "BIC",
-        "AIC_EVENT",
-        "AIC_INTERP",
-        "AIC_NULL",
-        "BIC_EVENT",
-        "BIC_INTERP",
-        "BIC_NULL",
-        "n_obs",
-        "beta_intercept",
-        "beta_interp",
-        "beta_event",
-        "model_type",
-        "fit_ok",
-    ]
-    keep_r = [c for c in keep_r if c in r_df.columns]
-    r_df = r_df[keep_r].copy()
-
-    merged = py_df.merge(
-        r_df, on=["KEY", "WELL", "ITER"], how="outer", suffixes=("_py", "_r")
-    )
-
-    compare_cols = [
-        "LAG",
-        "p_trend",
-        "p_interp",
-        "p_event",
-        "AIC",
-        "BIC",
-        "AIC_EVENT",
-        "AIC_INTERP",
-        "AIC_NULL",
-        "BIC_EVENT",
-        "BIC_INTERP",
-        "BIC_NULL",
-        "n_obs",
-        "beta_intercept",
-        "beta_interp",
-        "beta_event",
-    ]
-
-    for c in compare_cols:
-        py = f"{c}_py"
-        rr = f"{c}_r"
-        if py in merged.columns and rr in merged.columns:
-            merged[f"{c}_diff"] = pd.to_numeric(
-                merged[py], errors="coerce"
-            ) - pd.to_numeric(merged[rr], errors="coerce")
-            merged[f"{c}_absdiff"] = merged[f"{c}_diff"].abs()
-
-    return merged
-
-
-import plotly.express as px
-
-
-def plot_py_vs_r(merged, col):
-    xcol = f"{col}_r"
-    ycol = f"{col}_py"
-
-    df = merged[[xcol, ycol, "KEY", "WELL", "ITER"]].copy()
-    df = df.dropna()
-
-    fig = px.scatter(
-        df,
-        x=xcol,
-        y=ycol,
-        hover_data=["KEY", "WELL", "ITER"],
-        title=f"Python vs R: {col}",
-    )
-
-    if not df.empty:
-        xmin = min(df[xcol].min(), df[ycol].min())
-        xmax = max(df[xcol].max(), df[ycol].max())
-        fig.add_shape(
-            type="line", x0=xmin, y0=xmin, x1=xmax, y1=xmax, line=dict(dash="dash")
-        )
-
-    fig.show()

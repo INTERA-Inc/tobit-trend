@@ -4,9 +4,10 @@ version = "0.1.0"
 description = "Tobit Trend Analysis workflow"
 readme = "README.md"
 requires-python = ">=3.10"
+dependencies = ["pypdf>=3.0"]
 
 [project.scripts]
-tta = "tta.run:main"
+tta = "tta.run_tta:main"
 prepare-chromium-chemistry = "tta.preprocessing.prepare_chromium_chemistry:main"
 
 [build-system]

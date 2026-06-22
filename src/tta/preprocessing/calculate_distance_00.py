@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import geopandas as gpd
 import numpy as np
@@ -58,25 +57,28 @@ def run_calculate_distance(
     well: str | Path | pd.DataFrame,
     gauge: str | Path | pd.DataFrame,
     river_shapefile: str | Path | gpd.GeoDataFrame,
-) -> dict[str, Any]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Direct port of 00_CalculateDistance_clean.R / .txt.
 
     Parameters
     ----------
     well
-        WELL.csv path or DataFrame. Must contain:
-        NAME, OU, STATUS, XCOORDS, YCOORDS, ZCOORDS
+        WELL.csv path or pre-filtered DataFrame. Must contain:
+        NAME, OU, STATUS, XCOORDS, YCOORDS, ZCOORDS.
+        OU/STATUS filtering is the caller's responsibility (apply_well_filters
+        in run.py); this function uses all wells present in the DataFrame.
     gauge
         River gauge CSV path or DataFrame. Must contain:
         WELL_NAME, EASTING, NORTHING
     river_shapefile
         rivKrigeHigh shapefile path or GeoDataFrame.
         Must contain exactly 1 feature.
+
     Returns
     -------
-    "DIST": pandas.DataFrame,
-    "STAGEDIST": pandas.DataFrame,
+    tuple[pd.DataFrame, pd.DataFrame]
+        DIST DataFrame and STAGEDIST DataFrame.
     """
     well_df = _load_well(well)
     gauge_df = _load_gauge(gauge)
@@ -87,14 +89,11 @@ def run_calculate_distance(
     # R:
     # WELLS <- WELL[OU %in% c('100-KR-4','100-HR-3-D','100-HR-3-H')]
     # WELLS <- WELLS[!STATUS %in% c('DECOMMISSIONED-V','DRILLING CANCELLED')]$NAME
+    #
+    # The caller (run.py) applies OU/STATUS filters via apply_well_filters()
+    # before passing `well` here, so we use all wells present in well_df.
     # -------------------------------------------------------------------------
-    wells_filtered = well_df.loc[
-        well_df["OU"].isin(["100-KR-4", "100-HR-3-D", "100-HR-3-H"])
-    ]
-    wells_filtered = wells_filtered.loc[
-        ~wells_filtered["STATUS"].isin(["DECOMMISSIONED-V", "DRILLING CANCELLED"]),
-        "NAME",
-    ]
+    wells_filtered = well_df["NAME"]
 
     # -------------------------------------------------------------------------
     # Calculate Distance to River
@@ -155,26 +154,14 @@ def run_calculate_distance(
     # for(i in 1:nrow(STAGEDIST)){ # warning: hard coded col from 5 to 11,
     #   STAGEDIST$STAGE[i] <- names(which.min(apply(STAGEDIST[i,5:11,with=FALSE],MARGIN=2,min)))
     # }
-    #
-    # Exact direct port of hard-coded R slice 5:11 (1-based)
-    # -> Python slice 4:11 (0-based, end-exclusive).
     # -------------------------------------------------------------------------
-    stagedist["STAGE"] = pd.NA
-
-    if stagedist.shape[1] < 11:
+    stage_cols = [c for c in stagedist.columns if c.endswith("_GAUGE")]
+    if not stage_cols:
         raise ValueError(
-            "STAGEDIST has fewer than 11 columns before closest-gauge selection; "
-            "cannot directly port the hard-coded R slice 5:11."
+            "STAGEDIST has no gauge distance columns (expected columns ending in "
+            "'_GAUGE'). Check the gauge input DataFrame."
         )
 
-    stage_cols = list(stagedist.columns[4:11])
-
-    for i in range(len(stagedist)):
-        row_values = stagedist.iloc[i, 4:11].to_numpy(dtype=float)
-        min_idx = int(np.argmin(row_values))
-        stagedist.iat[i, stagedist.columns.get_loc("STAGE")] = stage_cols[min_idx]
-
-    dist_path: Path | None = None
-    stagedist_path: Path | None = None
+    stagedist["STAGE"] = stagedist[stage_cols].idxmin(axis=1)
 
     return dist, stagedist

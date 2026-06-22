@@ -4,7 +4,6 @@ from typing import Any, Optional, List, Dict, Tuple
 import pandas as pd
 import numpy as np
 import warnings
-from statsmodels.nonparametric.smoothers_lowess import lowess
 import tempfile
 import subprocess
 import scipy
@@ -15,10 +14,6 @@ import re
 # ----------------------------
 # Helpers
 # ----------------------------
-def current_version() -> str:
-    return "0.7.3"
-
-
 def to_datetime_date(s: pd.Series) -> pd.Series:
     # Cr_TrendData EVENT is date32[day] from parquet -> usually already datetime64[ns]
     dt = pd.to_datetime(s, errors="coerce")
@@ -95,9 +90,10 @@ def compress_empty_terms_per_well(df: pd.DataFrame) -> pd.DataFrame:
 
     for name, g in df.groupby("NAME", sort=False):
         g = g.copy()
+        term_num = pd.to_numeric(g["TERM"], errors="coerce")
 
         tm = sorted(
-            pd.to_numeric(g.loc[g["VAL"].notna(), "TERM"], errors="coerce")
+            term_num[g["VAL"].notna()]
             .dropna()
             .unique()
             .tolist()
@@ -105,18 +101,12 @@ def compress_empty_terms_per_well(df: pd.DataFrame) -> pd.DataFrame:
 
         # R: for(i in 1:length(TM))
         for i in range(1, len(tm) + 1):
-            xsub = g.loc[
-                g["VAL"].notna() & (pd.to_numeric(g["TERM"], errors="coerce") == i)
-            ]
+            xsub = g.loc[g["VAL"].notna() & (term_num == i)]
             if len(xsub) == 0:
-                g.loc[pd.to_numeric(g["TERM"], errors="coerce") > i, "TERM"] = (
-                    pd.to_numeric(
-                        g.loc[pd.to_numeric(g["TERM"], errors="coerce") > i, "TERM"],
-                        errors="coerce",
-                    )
-                    - 1
-                )
+                mask = term_num > i
+                term_num = term_num.where(~mask, term_num - 1)
 
+        g["TERM"] = term_num
         out.append(g)
 
     return pd.concat(out, ignore_index=True)
@@ -154,7 +144,9 @@ def _parse_trendbreak_date(series: pd.Series) -> pd.Series:
 
 
 def apply_manual_trend_breaks(
-    df: pd.DataFrame, newtrends: pd.DataFrame
+    df: pd.DataFrame,
+    newtrends: pd.DataFrame,
+    max_date: pd.Timestamp,
 ) -> pd.DataFrame:
     """
     Override TERM assignments using manual trend-break definitions.
@@ -174,7 +166,9 @@ def apply_manual_trend_breaks(
     - Applied AFTER compression, so it can reintroduce non-sequential TERM values.
     - Applies to ALL rows (including VAL = NA).
     - Interval is [START, END) (inclusive of START, exclusive of END).
-    - END = NA is treated as "current date".
+    - END = NA is filled with ``max_date`` (caller passes analysis cutoff, e.g.
+      ``pd.Timestamp(f"{CHEM_YEAR}-12-31")``), making results reproducible
+      regardless of the calendar date the workflow is run.
     - Later rows in the CSV overwrite earlier ones if overlapping.
     """
     df = df.copy()
@@ -195,8 +189,7 @@ def apply_manual_trend_breaks(
     nt["START"] = _parse_trendbreak_date(nt["START"])
     nt["END"] = _parse_trendbreak_date(nt["END"])
 
-    today = pd.Timestamp.today().floor("D")
-    nt["END"] = nt["END"].fillna(today)
+    nt["END"] = nt["END"].fillna(max_date + pd.Timedelta(days=1))
 
     # same practical behavior as R: rows with unusable START or TREND cannot apply
     nt = nt.loc[nt["NAME"].notna() & nt["START"].notna() & nt["TREND"].notna()].copy()
@@ -296,6 +289,7 @@ def run_script04_prep(
     CUTOFFS: dict[str, pd.Timestamp],
     KW_DATE1: pd.Timestamp = pd.Timestamp("2016-05-16"),
     KW_DATE2: pd.Timestamp = pd.Timestamp("2017-04-12"),
+    max_date: pd.Timestamp = pd.Timestamp("2024-12-31"),
 ) -> Tuple[pd.DataFrame, Dict[str, Optional[int]], set]:
     # Load
     # chem = pd.read_parquet(CR_TRENDS)
@@ -336,7 +330,7 @@ def run_script04_prep(
     ## Check to see if Data available for multiple Trends
     chem = compress_empty_terms_per_well(chem)
     ## Adjust Trend Breaks
-    chem = apply_manual_trend_breaks(chem, newtrends)
+    chem = apply_manual_trend_breaks(chem, newtrends, max_date=max_date)
     ## Add Trend Period for KW Remediation
     chem = apply_kw_extra_terms(chem, kw, KW_DATE1, KW_DATE2)
 

@@ -1,5 +1,3 @@
-LICENSE
-README.md
 pyproject.toml
 src/tta/__init__.py
 src/tta/config.py

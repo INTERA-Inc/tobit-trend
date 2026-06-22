@@ -133,7 +133,13 @@ def _prep_data_trends_rs(
     )
     full = full.merge(out, on="EVENT", how="left", sort=False)
     full["INTERP"] = full["STAGE"].interpolate(method="linear", limit_direction="both")
-    full["NAME"] = out["NAME"].dropna().iloc[0]
+    name_vals = out["NAME"].dropna()
+    if name_vals.empty:
+        raise ValueError(
+            "_prep_data_trends_rs(): stage DataFrame has no non-null NAME values; "
+            "cannot assign well name."
+        )
+    full["NAME"] = name_vals.iloc[0]
     return full.sort_values("EVENT").reset_index(drop=True)
 
 

@@ -1,6 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 import tomllib
+
+import pandas as pd
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,7 @@ class TrendConfig:
     no_rs_csv: Path
     kw_csv: Path
     PRIOR_YEAR: int
-    CUTOFFS: dict[str, str]
+    CUTOFFS: dict[str, pd.Timestamp]
     KW_DATE1: str
     KW_DATE2: str
     # tobit model
@@ -62,12 +64,42 @@ class TrendConfig:
     gis_ou_shapefile: Path
     map_crs: str
 
+    def validate_paths(self) -> None:
+        """
+        Raise FileNotFoundError if any required input file does not exist.
+
+        Called automatically by ``from_toml()`` so the workflow fails fast
+        rather than discovering missing files mid-run. ``output_dir`` is
+        excluded because it is created by the workflow.
+        """
+        # Single-path fields — every Path field except output_dir
+        _exclude = {"output_dir"}
+        missing: list[str] = []
+
+        for f in fields(self):
+            if f.name in _exclude:
+                continue
+            val = getattr(self, f.name)
+            if isinstance(val, Path) and not val.exists():
+                missing.append(str(val))
+
+        # chemistry_files is list[Path]
+        for p in self.chemistry_files:
+            if not p.exists():
+                missing.append(str(p))
+
+        if missing:
+            lines = "\n  ".join(missing)
+            raise FileNotFoundError(
+                f"The following input files referenced in the config do not exist:\n  {lines}"
+            )
+
     @classmethod
     def from_toml(cls, path: str | Path) -> "TrendConfig":
         with open(path, "rb") as f:
             raw = tomllib.load(f)
 
-        return cls(
+        instance = cls(
             # global settings
             run_ver=raw["global_settings"]["run_ver"],
             output_dir=Path(raw["global_settings"]["output_dir"]),
@@ -111,7 +143,7 @@ class TrendConfig:
             no_rs_csv=Path(raw["tobit_trends"]["no_rs_csv"]),
             kw_csv=Path(raw["tobit_trends"]["kw_csv"]),
             PRIOR_YEAR=int(raw["data_rules"]["PRIOR_YEAR"]),
-            CUTOFFS=dict(raw["CUTOFFS"]),
+            CUTOFFS={k: pd.Timestamp(v) for k, v in raw["CUTOFFS"].items()},
             KW_DATE1=raw["KW_DATES"]["date1"],
             KW_DATE2=raw["KW_DATES"]["date2"],
             # model
@@ -123,3 +155,5 @@ class TrendConfig:
             gis_ou_shapefile=Path(raw["reporting"]["gis_ou_shapefile"]),
             map_crs=raw.get("reporting", {}).get("map_crs", "EPSG:2926"),
         )
+        instance.validate_paths()
+        return instance

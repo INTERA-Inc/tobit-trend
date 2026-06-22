@@ -7,6 +7,7 @@ import math
 import os
 import tempfile
 import subprocess
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -157,24 +158,49 @@ def crosscor_r_bridge(
     y1: np.ndarray,
     x2: np.ndarray,
     y2: np.ndarray,
-    lag: int,
+    lags,
     r_script_path: str,
 ) -> pd.DataFrame:
+    """
+    Call the R cross-correlation script for all lag values in a single subprocess.
+
+    The series (x1/y1, x2/y2) and the lag vector are written as columns in one
+    CSV; they may differ in length and are NaN-padded to match. The R script
+    loops over the lags internally and returns one row per lag.
+
+    Parameters
+    ----------
+    x1, y1 : np.ndarray
+        Numeric day-indices and values for series 1 (water-level).
+    x2, y2 : np.ndarray
+        Numeric day-indices and values for series 2 (river stage).
+    lags : iterable of int
+        Lag values (days) to test, e.g. ``range(0, MAXLAG + 1)``.
+    r_script_path : str
+        Path to ``crosscor_r_bridge.R``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns ``acf`` and ``lag``, one row per tested lag.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         infile = os.path.join(tmpdir, "in.csv")
         outfile = os.path.join(tmpdir, "out.csv")
 
         n1 = len(x1)
         n2 = len(x2)
-        n = max(n1, n2)
+        lags_list = list(lags)
+        n_lags = len(lags_list)
+        n = max(n1, n2, n_lags)
 
         df = pd.DataFrame(
             {
-                "x1": list(x1) + [np.nan] * (n - n1),
-                "y1": list(y1) + [np.nan] * (n - n1),
-                "x2": list(x2) + [np.nan] * (n - n2),
-                "y2": list(y2) + [np.nan] * (n - n2),
-                "lag": [lag] * n,
+                "x1":  list(x1)      + [np.nan] * (n - n1),
+                "y1":  list(y1)      + [np.nan] * (n - n1),
+                "x2":  list(x2)      + [np.nan] * (n - n2),
+                "y2":  list(y2)      + [np.nan] * (n - n2),
+                "lag": lags_list     + [np.nan] * (n - n_lags),
             }
         )
         df.to_csv(infile, index=False)
@@ -212,11 +238,7 @@ def do_lag(
         x2 = _event_to_numeric(y["EVENT"])
         y1 = X_0[DEP].to_numpy()
         y2 = y[INDEP].to_numpy()
-        lags = range(0, MAXLAG + 1)
-        ccf_parts = [
-            crosscor_r_bridge(x1, y1, x2, y2, lag, r_script_path) for lag in lags
-        ]
-        ccf = pd.concat(ccf_parts, ignore_index=True)
+        ccf = crosscor_r_bridge(x1, y1, x2, y2, range(0, MAXLAG + 1), r_script_path)
         max_abs = np.nanmax(np.abs(ccf["acf"].to_numpy()))
         lag = ccf.loc[np.abs(ccf["acf"]) == max_abs, "lag"].to_numpy()
     else:
@@ -727,6 +749,42 @@ def do_ols(
 # --------------------------------------------------------------------------------------
 
 
+def _process_well_wl(args: tuple) -> tuple:
+    """
+    Worker for parallel water-level trend analysis.
+
+    Processes a single well's water-level data. Must be a module-level function
+    so that the Windows ``spawn`` multiprocessing context can pickle it.
+
+    Parameters
+    ----------
+    args : tuple
+        ``(name, X, MAXLAG, LOG, TS, MINDATE, N, PND, r_script_path)``
+
+    Returns
+    -------
+    tuple
+        ``(name, result)`` where ``result`` is a ``TrendSummary``, a dict of
+        ``TrendSummary``, or ``None`` when data are insufficient.
+    """
+    name, X, MAXLAG, LOG, TS, MINDATE, N, PND, r_script_path = args
+    X_0 = X.loc[~pd.isna(X["WLE"])].copy()
+    if pd.to_datetime(X_0["EVENT"]).dt.year.nunique() > 1:
+        DAT = parse_regression(X, LHS="WLE", RHS=["INTERP", "EVENT"], LOG=LOG, TS=TS)
+        result = do_ols(
+            DAT,
+            MAXLAG=MAXLAG,
+            LOG=LOG,
+            MINDATE=MINDATE,
+            N=N,
+            PND=PND,
+            r_script_path=r_script_path,
+        )
+    else:
+        result = None
+    return name, result
+
+
 def run_water_level_trend_analysis(
     wl_rs: pd.DataFrame,
     MAXLAG: int = 90,
@@ -736,38 +794,62 @@ def run_water_level_trend_analysis(
     N: int = 8,
     PND: float = 0.0,
     r_script_path: Optional[str] = None,
+    n_workers: Optional[int] = None,
 ) -> Dict[str, Optional[Union[TrendSummary, Dict[str, TrendSummary]]]]:
+    """
+    Run water-level OLS + lag analysis for every well in ``wl_rs`` in parallel.
 
+    Each well is processed independently by a ``ProcessPoolExecutor`` worker.
+    Results are collected in the same order as the input groupby.
+
+    Parameters
+    ----------
+    wl_rs : pd.DataFrame
+        Water-level + river-stage time series with a ``NAME`` column.
+    MAXLAG : int
+        Maximum lag (days) for cross-correlation.
+    LOG : str
+        Log transformation: ``"log"``, ``"log10"``, or ``"NA"``.
+    TS : Any
+        Optional time-series smoothing parameter passed to ``parse_regression``.
+    MINDATE : str or pd.Timestamp
+        Minimum date for trend analysis.
+    N : int
+        Minimum observations required for modelling.
+    PND : float
+        Maximum proportion of non-detects allowed.
+    r_script_path : str or Path or None
+        Path to ``crosscor_r_bridge.R``.
+    n_workers : int or None
+        Number of parallel worker processes. Defaults to ``os.cpu_count()``.
+
+    Returns
+    -------
+    dict
+        Mapping of well name → ``TrendSummary`` (single-TERM), dict of
+        ``TrendSummary`` (multi-TERM), or ``None`` when data are insufficient.
+    """
     wllist = {name: grp.copy() for name, grp in wl_rs.groupby("NAME", sort=False)}
     wllag: Dict[str, Optional[Union[TrendSummary, Dict[str, TrendSummary]]]] = {}
 
-    with tqdm(
-        wllist.items(),
-        total=len(wllist),
-        desc="Water level trend analysis",
-        unit="well",
-    ) as pbar:
-        for well_curr, (name, X) in enumerate(pbar, start=1):
-            pbar.set_postfix(current=name, done=f"{well_curr}/{len(wllist)}")
+    if not wllist:
+        return wllag
 
-            X_0 = X.loc[~pd.isna(X["WLE"])].copy()
+    n = min(len(wllist), os.cpu_count() or 1) if n_workers is None else n_workers
 
-            if pd.to_datetime(X_0["EVENT"]).dt.year.nunique() > 1:
-                DAT = parse_regression(
-                    X, LHS="WLE", RHS=["INTERP", "EVENT"], LOG=LOG, TS=TS
-                )
-                LM = do_ols(
-                    DAT,
-                    MAXLAG=MAXLAG,
-                    LOG=LOG,
-                    MINDATE=MINDATE,
-                    N=N,
-                    PND=PND,
-                    r_script_path=r_script_path,
-                )
-                wllag[name] = LM
-            else:
-                wllag[name] = None
+    args_iter = [
+        (name, X, MAXLAG, LOG, TS, MINDATE, N, PND, r_script_path)
+        for name, X in wllist.items()
+    ]
+
+    with ProcessPoolExecutor(max_workers=n) as executor:
+        for name, result in tqdm(
+            executor.map(_process_well_wl, args_iter),
+            total=len(wllist),
+            desc="Water level trend analysis",
+            unit="well",
+        ):
+            wllag[name] = result
 
     return wllag
 
