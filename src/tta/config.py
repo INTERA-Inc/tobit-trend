@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import Optional
 import tomllib
 
 import pandas as pd
@@ -12,9 +15,11 @@ class TrendConfig:
     """
 
     # global settings
-    run_ver: str
+    run_id: str
     output_dir: Path
     selected_wells: list[str]
+    global_min_date: pd.Timestamp
+    global_max_date: pd.Timestamp
 
     # run_calculate_distance - script00
     well_info_well: Path
@@ -31,18 +36,19 @@ class TrendConfig:
     mdl_sub_if_nonpositive_missing: float
     reviewq_remove_patterns: list[str]
     collection_purpose_exclude: list[str]
-    trend_min_year: int
-    CHEM_YEAR: int
+    duplicate_handling: str        # how duplicates are aggregated; placeholder ('daily_avg')
+    write_chem_output: bool        # write preprocessed chemistry parquet to output_dir
+    chem_max_date: pd.Timestamp   # per-step override; defaults to global_max_date
 
     # run_water_level_import - script02
     wl_file: Path
-    WL_YEAR: int
+    wl_max_date: pd.Timestamp   # per-step override; defaults to global_max_date
 
     # run_water_level_trend_analysis - script03
     maxlag: int
     n_min: int
     pnd_max: float
-    mindate: str
+    regression_start_date: str
     r_script_path: Path
 
     # run_tobit_trend_analysis - script04
@@ -50,7 +56,6 @@ class TrendConfig:
     trend_breaks_csv: Path
     no_rs_csv: Path
     kw_csv: Path
-    PRIOR_YEAR: int
     CUTOFFS: dict[str, pd.Timestamp]
     KW_DATE1: str
     KW_DATE2: str
@@ -64,6 +69,17 @@ class TrendConfig:
     gis_ou_shapefile: Path
     map_crs: str
 
+    # validation table
+    save_validation_table: bool
+    mcl_near_river: float
+    mcl_far: float
+    mcl_near_river_shapefile: Optional[Path]  # wells within 200 ft of river → MCL=mcl_near_river
+
+    @property
+    def prior_year(self) -> int:
+        """Year a well must have chemistry data in to be included; derived as global_max_date.year - 1."""
+        return self.global_max_date.year - 1
+
     def validate_paths(self) -> None:
         """
         Raise FileNotFoundError if any required input file does not exist.
@@ -72,7 +88,8 @@ class TrendConfig:
         rather than discovering missing files mid-run. ``output_dir`` is
         excluded because it is created by the workflow.
         """
-        # Single-path fields — every Path field except output_dir
+        # Single-path fields — every Path field except output_dir and optional paths.
+        # Optional[Path] fields are skipped when None (isinstance check handles this).
         _exclude = {"output_dir"}
         missing: list[str] = []
 
@@ -99,11 +116,16 @@ class TrendConfig:
         with open(path, "rb") as f:
             raw = tomllib.load(f)
 
+        gs = raw["global_settings"]
+        global_max_date = pd.Timestamp(gs["global_max_date"])
+
         instance = cls(
             # global settings
-            run_ver=raw["global_settings"]["run_ver"],
-            output_dir=Path(raw["global_settings"]["output_dir"]),
-            selected_wells=list(raw["global_settings"].get("selected_wells", [])),
+            run_id=gs["run_id"],
+            output_dir=Path(gs["output_dir"]),
+            selected_wells=list(gs.get("selected_wells", [])),
+            global_min_date=pd.Timestamp(gs["global_min_date"]),
+            global_max_date=global_max_date,
             # run_calculate_distance - script00
             well_info_well=Path(raw["calculate_distance"]["well_info_well"]),
             gauge_locs=Path(raw["calculate_distance"]["gauge_locs"]),
@@ -126,23 +148,31 @@ class TrendConfig:
             collection_purpose_exclude=list(
                 raw["prep_chemistry"]["collection_purpose_exclude"]
             ),
-            trend_min_year=int(raw["prep_chemistry"]["trend_min_year"]),
-            CHEM_YEAR=int(raw["prep_chemistry"]["CHEM_YEAR"]),
+            duplicate_handling=str(
+                raw["prep_chemistry"].get("duplicate_handling", "daily_avg")
+            ),
+            write_chem_output=bool(
+                raw["prep_chemistry"].get("write_chem_output", True)
+            ),
+            chem_max_date=pd.Timestamp(
+                raw["prep_chemistry"].get("max_date", gs["global_max_date"])
+            ),
             # run_water_level_import - script02
             wl_file=Path(raw["prep_wl"]["wl_file"]),
-            WL_YEAR=int(raw["prep_wl"]["WL_YEAR"]),
+            wl_max_date=pd.Timestamp(
+                raw["prep_wl"].get("max_date", gs["global_max_date"])
+            ),
             # run_water_level_trend_analysis - script03
             maxlag=int(raw["model"]["maxlag"]),
             n_min=int(raw["model"]["n_min"]),
             pnd_max=float(raw["model"]["pnd_max"]),
-            mindate=raw["model"]["mindate"],
+            regression_start_date=raw["model"]["regression_start_date"],
             r_script_path=Path(raw["tobit_trends"]["r_script_path"]),
             # run_tobit_trend_analysis - script04
             system_wells_csv=Path(raw["tobit_trends"]["system_wells_csv"]),
             trend_breaks_csv=Path(raw["tobit_trends"]["trend_breaks_csv"]),
             no_rs_csv=Path(raw["tobit_trends"]["no_rs_csv"]),
             kw_csv=Path(raw["tobit_trends"]["kw_csv"]),
-            PRIOR_YEAR=int(raw["data_rules"]["PRIOR_YEAR"]),
             CUTOFFS={k: pd.Timestamp(v) for k, v in raw["CUTOFFS"].items()},
             KW_DATE1=raw["KW_DATES"]["date1"],
             KW_DATE2=raw["KW_DATES"]["date2"],
@@ -154,6 +184,17 @@ class TrendConfig:
             gis_roads_shapefile=Path(raw["reporting"]["gis_roads_shapefile"]),
             gis_ou_shapefile=Path(raw["reporting"]["gis_ou_shapefile"]),
             map_crs=raw.get("reporting", {}).get("map_crs", "EPSG:2926"),
+            # validation table
+            save_validation_table=bool(
+                raw.get("reporting", {}).get("save_validation_table", True)
+            ),
+            mcl_near_river=float(raw["reporting"]["mcl_near_river"]),
+            mcl_far=float(raw["reporting"]["mcl_far"]),
+            mcl_near_river_shapefile=(
+                Path(raw["reporting"]["mcl_near_river_shapefile"])
+                if raw.get("reporting", {}).get("mcl_near_river_shapefile")
+                else None
+            ),
         )
         instance.validate_paths()
         return instance

@@ -3,8 +3,10 @@ name = "Tobit Trend Analysis"
 version = "0.1.0"
 
 [global_settings]
-run_ver = "v6_05172"
+run_id = "v6_051726"
 output_dir = "outputs"
+global_min_date = "2008-01-01"   # lower data cutoff applied to both chemistry and water-level imports
+global_max_date = "2024-12-31"   # upper data cutoff applied to both chemistry and water-level imports
 selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
 
 [calculate_distance] # script00 - CALCULATE DISTANCE
@@ -30,12 +32,13 @@ well_filter_values = [
 mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing
 reviewq_remove_patterns = ["Y", "R"]
 collection_purpose_exclude = ["IH", "C", "VAR", "VP", "RC", "WM", "S", "PE", "T", "PD", "CNF"] # list of COLLECTION_PURPOSE codes to remove
-trend_min_year = 2008
-CHEM_YEAR = 2024 # chemistry analysis year cutoff
+duplicate_handling = "daily_avg" # how to handle duplicate samples; placeholder for future options
+write_chem_output = true          # write intermediate preprocessed chemistry parquet to output_dir
+# max_date = "2024-12-31"  # optional override; defaults to global_max_date
 
 [prep_wl] # script02 - PREP WATER LEVEL DATA
 wl_file = "input/00_Data/01_combined_hourly_AWLN_HEIS_CY06_24_v1_031225.csv"
-WL_YEAR = 2024  # water level analysis year cutoff
+# max_date = "2024-12-31"  # optional override; defaults to global_max_date
 
 [tobit_trends] # script04 - CHEMISTRY TOBIT TREND ANALYSIS
 system_wells_csv = "input/SystemWells.csv"
@@ -49,17 +52,14 @@ dep = "VAL" # dependent variable
 maxlag = 90
 n_min = 7
 pnd_max = 0.5
-mindate = "1994-01-01"
+regression_start_date = "1994-01-01"
 
-[data_rules]
-PRIOR_YEAR = 2023
-
-[CUTOFFS]
+[CUTOFFS] # Remediation Cut-off Dates
 DX = "2011-01-01"
 HX = "2011-11-01"
 KX_KW_KR4 = "2009-04-01"
 
-[KW_DATES]
+[KW_DATES] # Trend Periods for KW Remediation
 date1 = "2016-05-16"
 date2 = "2017-04-12"
 
@@ -69,3 +69,8 @@ gis_river_shapefile = "input/GIS/HIGHRIV.shp"
 gis_roads_shapefile = "input/GIS/ROADS.shp"
 gis_ou_shapefile = "input/GIS/OU.shp"
 map_crs = "EPSG:2926"
+
+# Validation table settings
+save_validation_table = true
+mcl_near_river = 10.0        # MCL for wells within 200 ft of river
+mcl_far = 48.0               # MCL for all other wells

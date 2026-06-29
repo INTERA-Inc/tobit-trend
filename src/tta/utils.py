@@ -28,13 +28,13 @@ def load_table(path: str | Path) -> pd.DataFrame:
     raise ValueError(f"Unsupported input format: {path}")
 
 
-def build_output_dir(output_dir: str | Path | None, run_ver: str | None) -> Path | None:
+def build_output_dir(output_dir: str | Path | None, run_id: str | None) -> Path | None:
     if output_dir is None:
         return None
 
     out_dir = Path(output_dir)
-    if run_ver is not None:
-        out_dir = out_dir / str(run_ver)
+    if run_id is not None:
+        out_dir = out_dir / str(run_id)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir

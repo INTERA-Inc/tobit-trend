@@ -35,6 +35,7 @@ from tta.preprocessing.water_level_trends_03 import (
 from tta.preprocessing.tobit_prep_04 import run_script04_prep
 from tta.model.tobit_model_04 import do_tobit_rstyle
 from tta.reporting.generate_report_05 import generate_report
+from tta.reporting.validation_table import build_validation_table, load_near_river_wells
 
 MODEL_LOG = "log"
 MODEL_INDEP = ["INTERP", "EVENT"]
@@ -47,9 +48,9 @@ def main() -> None:
         args = parse_args()
         config = TrendConfig.from_toml(args.config)
         # Load config
-        # config = TrendConfig.from_toml("configs/trend_config.toml")
+        # config = TrendConfig.from_toml("configs/config.toml")
         # Build output directory
-        output_dir = build_output_dir(config.output_dir, config.run_ver)
+        output_dir = build_output_dir(config.output_dir, config.run_id)
         # Set up logging
         logger = setup_logger(output_dir)
         run_start = perf_counter()
@@ -104,7 +105,7 @@ def main() -> None:
 
         logger.info("Starting Tobit Trend Analysis workflow")
         logger.info(f"Output directory: {output_dir}")
-        logger.info(f"Run version id: {config.run_ver}")
+        logger.info(f"Run version id: {config.run_id}")
         logger.info(
             f"Selected wells: {config.selected_wells if config.selected_wells else 'ALL'}"
         )
@@ -135,7 +136,7 @@ def main() -> None:
             mdl_sub_if_nonpositive_missing=config.mdl_sub_if_nonpositive_missing,
             reviewq_remove_patterns=config.reviewq_remove_patterns,
             collection_purpose_exclude=config.collection_purpose_exclude,
-            trend_min_year=config.trend_min_year,
+            trend_min_year=config.global_min_date.year,
         )
 
         chem_rs = run_chemistry_import(
@@ -145,16 +146,12 @@ def main() -> None:
             stagedist=stagedist,  # from script 00
             well=well,
             screen=screen,
-            yr=config.CHEM_YEAR,
+            yr=config.chem_max_date.year,
             cfg=chem_cfg,
         )
         logger.info(
             f"Step 01 complete: chem_rs rows={len(chem_rs)}, wells={chem_rs['NAME'].nunique()}"
         )
-        chem_rs.to_parquet(
-            output_dir / f"Cr_TrendData_{config.run_ver}.parquet", index=False
-        )
-
         ################################
         # 02 - PREP WATER LEVEL DATA   #
         ################################
@@ -170,13 +167,13 @@ def main() -> None:
             stagedist=stagedist,
             well=well,
             screen=screen,
-            yr=config.WL_YEAR,
-            trend_min_year=config.trend_min_year,
+            yr=config.wl_max_date.year,
+            trend_min_year=config.global_min_date.year,
         )
         wl_rs.to_parquet(
-            output_dir / f"WL_TrendData_{config.run_ver}.parquet", index=False
+            output_dir / f"WL_TrendData_{config.run_id}.parquet", index=False
         )
-        # wl_rs = load_table(output_dir / f"WL_TrendData_{config.run_ver}.parquet")  # test load
+        # wl_rs = load_table(output_dir / f"WL_TrendData_{config.run_id}.parquet")  # test load
         logger.info(
             f"Step 02 complete: wl_rs rows={len(wl_rs)}, wells={wl_rs['NAME'].nunique()}"
         )
@@ -189,41 +186,46 @@ def main() -> None:
             wl_rs=wl_rs,
             MAXLAG=config.maxlag,
             LOG=WL_LOG,
-            MINDATE=config.mindate,
+            MINDATE=config.regression_start_date,
             N=config.n_min,
             PND=config.pnd_max,
             r_script_path=config.r_script_path,
         )
         wl_trends_df = flatten_water_level_trends(res)
         wl_trends_df.to_parquet(
-            output_dir / f"WL_trends_{config.run_ver}.parquet", index=False
+            output_dir / f"WL_trends_{config.run_id}.parquet", index=False
         )
-        # chem_rs = load_table(output_dir / f"Cr_TrendData_{config.run_ver}.parquet")  # test load
-        # wl_trends_df = load_table(output_dir / f"WLTrends_flat_{config.run_ver}.csv")  # test load
         logger.info(f"Step 03 complete: wl_trends rows={len(wl_trends_df)}")
 
         ########################################
         # 04 - CHEMISTRY TOBIT TREND ANALYSIS  #
         ########################################
         logger.info("Step 04: Running chemistry Tobit trend analysis")
-        chem_rs, ulags, newrs_names = run_script04_prep(
+        chem_rs, ulags, newrs_names, term_limits = run_script04_prep(
             chem=chem_rs,  # from script 01
             wl_trends=wl_trends_df,  # from script 03
             SYSTEM_WELLS_CSV=config.system_wells_csv,
             TREND_BREAKS_CSV=config.trend_breaks_csv,
             NO_RS_CSV=config.no_rs_csv,
             KW_CSV=config.kw_csv,
-            PRIOR_YEAR=config.PRIOR_YEAR,
+            PRIOR_YEAR=config.prior_year,
             CUTOFFS=config.CUTOFFS,
             KW_DATE1=config.KW_DATE1,
             KW_DATE2=config.KW_DATE2,
-            max_date=pd.Timestamp(f"{config.CHEM_YEAR}-12-31"),
+            max_date=config.chem_max_date,
+            global_min_date=config.global_min_date,
         )
 
         logger.debug(f"Prepared rows: {len(chem_rs)}")
         logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
         logger.debug(f"ULAG wells: {len(ulags)}")
         logger.debug(f"NEWRS wells: {len(newrs_names)}")
+        
+        if config.write_chem_output:
+            chem_rs.to_parquet(
+                output_dir / f"Chem_TrendData_{config.run_id}.parquet", index=False
+            )
+            logger.info("Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet", config.run_id)
         logger.info("Done with prep, starting model...")
 
         res = do_tobit_rstyle(
@@ -239,12 +241,49 @@ def main() -> None:
             newrs_names=newrs_names,
         )
 
+        # Build DataFrame from results; drop vcov (numpy arrays don't serialize to CSV).
+        # df_tobit.drop(columns=["vcov"], errors="ignore").to_csv(
+        #     output_dir / f"TTA_Results_{config.run_id}.csv", index=False
+        # )
         df_tobit = pd.DataFrame(res)
-        df_tobit.to_csv(output_dir / f"TTA_Results_{config.run_ver}.csv", index=False)
+        df_tobit = pd.DataFrame(res).drop(columns=["vcov"], errors="ignore")
         logger.info(f"Step 04 complete: Tobit results rows={len(df_tobit)}")
-        logger.info(
-            f"Step 04 complete: Results written to {output_dir / f'TTA_Results_{config.run_ver}.csv'}"
-        )
+        # logger.info(
+        #     f"Step 04 complete: Results written to {output_dir / f'TTA_Results_{config.run_id}.csv'}"
+        # )
+
+        ##############################################
+        # 04b - WRITE OUTPUT TABLE (tblSummary port) #
+        ##############################################
+        if config.save_validation_table:
+            logger.info("Step 04b: Writing results table")
+            near_river_wells = load_near_river_wells(config.mcl_near_river_shapefile)
+            if config.mcl_near_river_shapefile and not near_river_wells:
+                logger.warning(
+                    "mcl_near_river_shapefile was set but no well names could be loaded; "
+                    "all wells will use mcl_far=%.1f.",
+                    config.mcl_far,
+                )
+            val_tbl = build_validation_table(
+                results=res,
+                chem_rs=chem_rs,
+                well=well,
+                dist=dist,
+                cutoffs=config.CUTOFFS,
+                chem_year=config.chem_max_date.year,
+                near_river_wells=near_river_wells,
+                mcl_near=config.mcl_near_river,
+                mcl_far=config.mcl_far,
+                dep=config.dep,
+                term_limits=term_limits,
+            )
+            val_path = output_dir / f"TTA_Results_{config.run_id}.csv"
+            val_tbl.to_csv(val_path, index=False)
+            logger.info(
+                "Step 04b complete: Results table rows=%d, written to %s",
+                len(val_tbl),
+                val_path,
+            )
 
         ############################
         # 05 - REPORTING/PLOTTING  #
@@ -266,7 +305,7 @@ def main() -> None:
             ou_shapefile=config.gis_ou_shapefile,
             ous=ous,
             map_crs=config.map_crs,
-            run_ver=config.run_ver,
+            run_id=config.run_id,
         )
 
         logger.info("Step 05 complete: reports generated for OUs: %s", ", ".join(ous))

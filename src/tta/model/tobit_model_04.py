@@ -243,16 +243,21 @@ def censreg_ll_test(beta, X, y, left, right=None):
     else:
         right = np.asarray(right, dtype=bool)
 
-    sigma = np.exp(beta[-1])
-    yhat = X @ beta[:-1]
-    r = (y - yhat) / sigma
+    # Suppress transient floating-point warnings that arise when the optimizer
+    # explores extreme log(sigma) values (sigma → 0 → divide-by-zero → huge
+    # residuals → overflow in norm.logpdf).  The optimiser recovers; the final
+    # result is unaffected.
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        sigma = np.exp(beta[-1])
+        yhat = X @ beta[:-1]
+        r = (y - yhat) / sigma
 
-    ll = np.empty(len(y), dtype=float)
-    between = ~(left | right)
+        ll = np.empty(len(y), dtype=float)
+        between = ~(left | right)
 
-    ll[left] = norm.logcdf(r[left])
-    ll[between] = norm.logpdf(r[between]) - beta[-1]
-    ll[right] = norm.logsf(r[right])
+        ll[left] = norm.logcdf(r[left])
+        ll[between] = norm.logpdf(r[between]) - beta[-1]
+        ll[right] = norm.logsf(r[right])
 
     return ll
 
@@ -442,7 +447,8 @@ def numeric_gradient_rstyle(f, t0, eps=1e-6, fixed=None, **kwargs):
         ft1 = f(t1, **kwargs)
         ft2 = f(t2, **kwargs)
 
-        grad[:, i] = (ft2 - ft1) / eps
+        with np.errstate(invalid="ignore"):
+            grad[:, i] = (ft2 - ft1) / eps
 
     return grad
 
@@ -1502,6 +1508,7 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
                 "SUM_cols": 1,
                 "model_type": "SUM_ROWS_1",
                 "fit_ok": False,
+                "vcov": None,
             }
 
         ll_full = y["CEN"]["maximum"]
@@ -1572,6 +1579,7 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
             "SUM_cols": 4,
             "model_type": "INTERP+EVENT",
             "fit_ok": True,
+            "vcov": np.asarray(y["CEN"]["varcovar"], dtype=float)[:-1, :-1],
         }
     elif len(INDEP) == 1:
         if y["CEN"] is None or isinstance(y["CEN"], float):
@@ -1612,6 +1620,7 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
                 "SUM_cols": 1,
                 "model_type": "SUM_ROWS_1",
                 "fit_ok": False,
+                "vcov": None,
             }
 
         ll_full = y["CEN"]["maximum"]
@@ -1679,6 +1688,7 @@ def extract_model_rstyle(x, y, DEP, INDEP, LAG, MODEL="Tobit", ITER=None):
             "SUM_cols": 4,
             "model_type": INDEP[0],
             "fit_ok": True,
+            "vcov": np.asarray(y["CEN"]["varcovar"], dtype=float)[:-1, :-1],
         }
 
 
@@ -1738,6 +1748,13 @@ def _process_well_tobit(args: tuple) -> list:
     ulag_applied = ulags is not None and name in ulags and pd.notna(ulags[name])
     is_newrs = newrs_names is not None and name in newrs_names
 
+    if is_newrs:
+        lag_origin = "no river stage"
+    elif ulag_applied:
+        lag_origin = "ULAG"
+    else:
+        lag_origin = "calculated"
+
     well_results = []
     for term in sorted(pd.Series(df_full["TERM"]).dropna().unique()):
         df_term_raw = df_full[df_full["TERM"] == term].copy()
@@ -1790,7 +1807,7 @@ def _process_well_tobit(args: tuple) -> list:
             LAG=lag_scalar,
             ITER=int(term),
         )
-
+        model["lag_origin"] = lag_origin
         well_results.append(model)
 
     return well_results

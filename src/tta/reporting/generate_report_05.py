@@ -221,7 +221,7 @@ def plt_report(
     roads_shapefile: Path,
     ou_shapefile: Path,
     output_dir: Path,
-    run_ver: str,
+    run_id: str,
     n_workers: int | None = None,
 ):
     # Load and reproject GIS layers once before the well loop.
@@ -235,7 +235,7 @@ def plt_report(
 
     for ou in OUs:
         wells_ou = wells[wells["OU"] == ou]
-        output_file = output_dir / f"TobitRegression_WLlag_{ou}_{run_ver}.pdf"
+        output_file = output_dir / f"TobitRegression_WLlag_{ou}_{run_id}.pdf"
 
         # Filter OU boundary once per OU, not once per well.
         gis_ou = gis_ous_full[gis_ous_full["Name"] == ou]
@@ -646,7 +646,18 @@ def plt_chem(
     ymin = 10 ** np.floor(np.log10(chem_min))
     ymax = 10 ** np.ceil(np.log10(chem_max))
     chem_concentrations_axis.set_ylim(ymin, ymax)
-    chem_concentrations_axis.set_ylabel("Hex. & Filt. Cr (µg/L)")
+    _analyte = (
+        str(chem_rs_well["ANALYTE"].dropna().iloc[0])
+        if "ANALYTE" in chem_rs_well.columns and chem_rs_well["ANALYTE"].notna().any()
+        else "Concentration"
+    )
+    _units = (
+        str(chem_rs_well["CHEM_UNITS"].dropna().iloc[0])
+        if "CHEM_UNITS" in chem_rs_well.columns and chem_rs_well["CHEM_UNITS"].notna().any()
+        else "µg/L"
+    )
+    _chem_ylabel = f"{_analyte} ({_units})"
+    chem_concentrations_axis.set_ylabel(_chem_ylabel)
     chem_concentrations_axis.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
     )
@@ -699,7 +710,7 @@ def plt_chem(
     chem_concentrations_axis2.yaxis.set_major_formatter(FormatStrFormatter("%.0e"))
     chem_concentrations_axis2.yaxis.set_minor_formatter(NullFormatter())
     chem_concentrations_axis2.set_ylim(ymin, ymax)
-    chem_concentrations_axis2.set_ylabel("Hex. & Filt. Cr (µg/L)")
+    chem_concentrations_axis2.set_ylabel(_chem_ylabel)
     chem_concentrations_axis2.grid(
         True, which="major", axis="x", linewidth=0.5, color="#FFFFFF"
     )
@@ -1072,7 +1083,7 @@ def generate_report(
     ou_shapefile: Path,
     ous: list[str],
     map_crs: str,
-    run_ver: str,
+    run_id: str,
 ) -> None:
     # merge DIST to wells
     if "DIST" not in wells.columns:
@@ -1118,5 +1129,5 @@ def generate_report(
         roads_shapefile,
         ou_shapefile,
         output_dir,
-        run_ver,
+        run_id,
     )

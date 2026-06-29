@@ -56,7 +56,7 @@ pip install -e .
 Edit the TOML file before running:
 
 ```text
-configs/trend_config.toml
+configs/config.toml
 ```
 
 ## Running the workflow
@@ -64,13 +64,13 @@ configs/trend_config.toml
 Run from the project root:
 
 ```bash
-tta configs/trend_config.toml
+tta configs/config.toml
 ```
 
 Alternative:
 
 ```bash
-python -m tta.run configs/trend_config.toml
+python -m tta.run configs/config.toml
 ```
 
 The TOML paths are expected to be relative to the project root.
@@ -101,11 +101,11 @@ Typical outputs include:
 ```text
 DIST.csv
 STAGEDIST.csv
-Cr_TrendData_<run_ver>.parquet
-WL_TrendData_<run_ver>.parquet
-WL_trends_<run_ver>.parquet
-TTA_results_<run_ver>.csv
-TobitRegression_WLlag_<OU>_<run_ver>.pdf
+Chem_TrendData_<run_id>.parquet
+WL_TrendData_<run_id>.parquet
+WL_trends_<run_id>.parquet
+TTA_results_<run_id>.csv
+TobitRegression_WLlag_<OU>_<run_id>.pdf
 tta.log
 ```
 
