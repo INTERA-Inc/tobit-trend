@@ -36,20 +36,22 @@ NUMERIC_COLS: list[str] = [
     "RiverStage_Coeff", "RiverStage_Coeff_stderror",
     "Date_Coeff", "Date_Coeff_stderror",
     "Intercept", "Intercept_stderror",
-    "Lag", "XCoords", "YCoords", "Distance", "STD",
+    "Lag", "XCoords", "YCoords", "Distance",
 ]
+# removed: "STD"
 
 INTEGER_COLS: list[str] = ["N"]
 
-BOOL_COLS: set[str] = {"Use_RiverStage", "Mean_Exceed", "UCL_Exceed"}
+BOOL_COLS: set[str] = {"Use_RiverStage"}
+# removed: "Mean_Exceed", "UCL_Exceed"
 
 PCT_STR_COLS: set[str] = {"PND"}
 
 CATEGORICAL_COLS: list[str] = [
-    "OU", "System", "Model", "Analyte", "Trend",
+    "OU", "System", "Model", , "Trend",
     "Transformation", "Trend_Break",
 ]
-
+# removed: "Analyte"
 DEFAULT_CONTROL = "benchmark_control.toml"
 
 
