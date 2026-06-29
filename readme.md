@@ -102,8 +102,6 @@ Typical outputs include:
 DIST.csv
 STAGEDIST.csv
 Chem_TrendData_<run_id>.parquet
-WL_TrendData_<run_id>.parquet
-WL_trends_<run_id>.parquet
 TTA_results_<run_id>.csv
 TobitRegression_WLlag_<OU>_<run_id>.pdf
 tta.log
@@ -114,7 +112,7 @@ tta.log
 
 ## Code walkthrough
 
-### `run.py`
+### `run_tta.py`
 
 Main workflow entry point. It:
 

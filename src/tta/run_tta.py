@@ -121,8 +121,8 @@ def main() -> None:
             gauge=config.gauge_locs,
             river_shapefile=config.river_shapefile,
         )
-        dist.to_csv(output_dir / "DIST.csv", index=False)
-        stagedist.to_csv(output_dir / "STAGEDIST.csv", index=False)
+        # dist.to_csv(output_dir / "DIST.csv", index=False)
+        # stagedist.to_csv(output_dir / "STAGEDIST.csv", index=False)
         logger.info(
             f"Step 00 complete: DIST rows={len(dist)}, STAGEDIST rows={len(stagedist)}"
         )
@@ -170,9 +170,9 @@ def main() -> None:
             yr=config.wl_max_date.year,
             trend_min_year=config.global_min_date.year,
         )
-        wl_rs.to_parquet(
-            output_dir / f"WL_TrendData_{config.run_id}.parquet", index=False
-        )
+        # wl_rs.to_parquet(
+        #     output_dir / f"WL_TrendData_{config.run_id}.parquet", index=False
+        # )
         # wl_rs = load_table(output_dir / f"WL_TrendData_{config.run_id}.parquet")  # test load
         logger.info(
             f"Step 02 complete: wl_rs rows={len(wl_rs)}, wells={wl_rs['NAME'].nunique()}"
@@ -220,12 +220,15 @@ def main() -> None:
         logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
         logger.debug(f"ULAG wells: {len(ulags)}")
         logger.debug(f"NEWRS wells: {len(newrs_names)}")
-        
+
         if config.write_chem_output:
             chem_rs.to_parquet(
                 output_dir / f"Chem_TrendData_{config.run_id}.parquet", index=False
             )
-            logger.info("Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet", config.run_id)
+            logger.info(
+                "Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet",
+                config.run_id,
+            )
         logger.info("Done with prep, starting model...")
 
         res = do_tobit_rstyle(
