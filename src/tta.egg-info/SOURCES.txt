@@ -1,12 +1,16 @@
+LICENSE
+README.md
 pyproject.toml
 src/tta/__init__.py
 src/tta/config.py
 src/tta/run.py
+src/tta/run_tta.py
 src/tta/utils.py
 src/tta.egg-info/PKG-INFO
 src/tta.egg-info/SOURCES.txt
 src/tta.egg-info/dependency_links.txt
 src/tta.egg-info/entry_points.txt
+src/tta.egg-info/requires.txt
 src/tta.egg-info/top_level.txt
 src/tta/model/__init__.py
 src/tta/model/tobit_model_04.py
@@ -19,6 +23,7 @@ src/tta/preprocessing/water_level_import_02.py
 src/tta/preprocessing/water_level_trends_03.py
 src/tta/reporting/__init__.py
 src/tta/reporting/generate_report_05.py
+src/tta/reporting/validation_table.py
 src/tta/tools/__init__.py
 tests/test_chemistry_import_01.py
 tests/test_prepare_chromium_chemistry.py

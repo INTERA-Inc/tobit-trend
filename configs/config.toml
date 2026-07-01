@@ -70,7 +70,9 @@ gis_roads_shapefile = "input/GIS/ROADS.shp"
 gis_ou_shapefile = "input/GIS/OU.shp"
 map_crs = "EPSG:2926"
 
-# Validation table settings
+# Validation table settings 
 save_validation_table = true
+# Maximum Contaminant Level (MCL) assignment
 mcl_near_river = 10.0        # MCL for wells within 200 ft of river
 mcl_far = 48.0               # MCL for all other wells
+mcl_near_river_shapefile = "input/00_Data/MCL_river_shp/wells_03_03_2019_within_200ft_ofRiver.shp"

@@ -140,21 +140,38 @@ def apply_well_filters(
 
     out = well.copy()
 
-    for col, mode, values in zip(filter_cols, filter_modes, filter_values):
+    for i, (col, mode, values) in enumerate(zip(filter_cols, filter_modes, filter_values)):
+        if not col or not str(col).strip():
+            raise ValueError(
+                f"well_filter_cols[{i}] is empty or blank; a valid column name is required."
+            )
+
         if col not in out.columns:
             raise KeyError(f"Well filter column {col!r} not found in well table.")
 
-        mode = str(mode).strip().lower()
+        if isinstance(values, str):
+            raise TypeError(
+                f"well_filter_values[{i}] for column {col!r} is a bare string "
+                f"{values!r}; each entry must be a list of values, e.g. [{values!r}]."
+            )
+
+        mode_str = str(mode).strip().lower()
+        if not mode_str:
+            raise ValueError(
+                f"well_filter_modes[{i}] for column {col!r} is empty or blank; "
+                "use 'include' or 'exclude'."
+            )
+
         values_norm = {str(v).strip() for v in values}
         col_values = out[col].astype(str).str.strip()
 
-        if mode == "include":
+        if mode_str == "include":
             out = out.loc[col_values.isin(values_norm)].copy()
-        elif mode == "exclude":
+        elif mode_str == "exclude":
             out = out.loc[~col_values.isin(values_norm)].copy()
         else:
             raise ValueError(
-                f"Invalid well filter mode {mode!r}. Use 'include' or 'exclude'."
+                f"well_filter_modes[{i}] value {mode!r} is invalid. Use 'include' or 'exclude'."
             )
 
     return out

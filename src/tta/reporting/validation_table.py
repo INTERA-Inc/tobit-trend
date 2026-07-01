@@ -380,7 +380,8 @@ def build_validation_table(
             continue
 
         # --- Metadata (stable across TERMs; take from first available row) ---
-        analyte = str(dt_all["ANALYTE"].iloc[0]) if "ANALYTE" in dt_all.columns else np.nan
+        _analytes = dt_all["ANALYTE"].dropna().unique().tolist() if "ANALYTE" in dt_all.columns else []
+        analyte = " & ".join(_analytes) if _analytes else np.nan
         ou = str(dt_all["OU"].iloc[0]) if "OU" in dt_all.columns else np.nan
         system = str(dt_all["SYSTEM"].iloc[0]) if "SYSTEM" in dt_all.columns else np.nan
 

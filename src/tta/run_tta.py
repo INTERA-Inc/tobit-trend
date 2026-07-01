@@ -192,9 +192,9 @@ def main() -> None:
             r_script_path=config.r_script_path,
         )
         wl_trends_df = flatten_water_level_trends(res)
-        wl_trends_df.to_parquet(
-            output_dir / f"WL_trends_{config.run_id}.parquet", index=False
-        )
+        # wl_trends_df.to_parquet(
+        #     output_dir / f"WL_trends_{config.run_id}.parquet", index=False
+        # )
         logger.info(f"Step 03 complete: wl_trends rows={len(wl_trends_df)}")
 
         ########################################
@@ -220,15 +220,12 @@ def main() -> None:
         logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
         logger.debug(f"ULAG wells: {len(ulags)}")
         logger.debug(f"NEWRS wells: {len(newrs_names)}")
-
+        
         if config.write_chem_output:
             chem_rs.to_parquet(
                 output_dir / f"Chem_TrendData_{config.run_id}.parquet", index=False
             )
-            logger.info(
-                "Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet",
-                config.run_id,
-            )
+            logger.info("Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet", config.run_id)
         logger.info("Done with prep, starting model...")
 
         res = do_tobit_rstyle(
