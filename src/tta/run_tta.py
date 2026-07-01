@@ -311,6 +311,20 @@ def main() -> None:
         )
 
         if config.wl_regression_report:
+            wl_regression_report(
+                run_id=config.run_id,
+                output_dir=output_dir,
+                dist=dist,
+                wl_rs=wl_rs,
+                wl_trends=wl_trends_df,
+                wells=well,
+                gis_river_shapefile=config.gis_river_shapefile,
+                gis_roads_shapefile=config.gis_roads_shapefile,
+                gis_ou_shapefile=config.gis_ou_shapefile,
+                map_crs=config.map_crs
+            )
+
+        if config.wl_regression_report:
             logger.info("Step 05b: Running water-level regression report")
             wl_regression_report(
                 run_id=config.run_id,
