@@ -15,6 +15,7 @@ Control file format (TOML):
     pass_threshold_pct  = 0.1            # relative error threshold (%)
     excel_output        = "benchmark_results.xlsx"  # set to "" to disable
 """
+
 from __future__ import annotations
 
 import sys
@@ -26,19 +27,26 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Column classification
 # ---------------------------------------------------------------------------
 
 NUMERIC_COLS: list[str] = [
-    "Mean", "UCL", "LCL",
-    "RiverStage_Coeff", "RiverStage_Coeff_stderror",
-    "Date_Coeff", "Date_Coeff_stderror",
-    "Intercept", "Intercept_stderror",
-    "Lag", "XCoords", "YCoords", "Distance",
+    "Mean",
+    "UCL",
+    "LCL",
+    "RiverStage_Coeff",
+    "RiverStage_Coeff_stderror",
+    "Date_Coeff",
+    "Date_Coeff_stderror",
+    "STD",
+    "Intercept",
+    "Intercept_stderror",
+    "Lag",
+    "XCoords",
+    "YCoords",
+    "Distance",
 ]
-# removed: "STD"
 
 INTEGER_COLS: list[str] = ["N"]
 
@@ -48,16 +56,22 @@ BOOL_COLS: set[str] = {"Use_RiverStage"}
 PCT_STR_COLS: set[str] = {"PND"}
 
 CATEGORICAL_COLS: list[str] = [
-    "OU", "System", "Model", , "Trend",
-    "Transformation", "Trend_Break",
+    "OU",
+    "System",
+    "Model",
+    "Trend",
+    "Transformation",
+    "Trend_Break",
+    "Analyte",
 ]
-# removed: "Analyte"
+
 DEFAULT_CONTROL = "benchmark_control.toml"
 
 
 # ---------------------------------------------------------------------------
 # Value normalisation
 # ---------------------------------------------------------------------------
+
 
 def _to_numeric(val) -> Optional[float]:
     if val is None:
@@ -118,12 +132,13 @@ def _normalise_trend_break(val) -> Optional[str]:
 # Per-cell comparison
 # ---------------------------------------------------------------------------
 
+
 def _compare_cell(col: str, py_raw, r_raw, threshold_pct: float) -> dict:
     rec: dict = {"column": col, "python": py_raw, "r": r_raw}
 
     if col in NUMERIC_COLS or col in INTEGER_COLS:
         py = _to_numeric(py_raw)
-        r  = _to_numeric(r_raw)
+        r = _to_numeric(r_raw)
         both_na = py is None and r is None
         if both_na:
             rec.update(diff="—", kind="numeric", passed=True, both_na=True)
@@ -131,35 +146,52 @@ def _compare_cell(col: str, py_raw, r_raw, threshold_pct: float) -> dict:
             rec.update(diff="one-NA", kind="numeric", passed=False, both_na=False)
         elif r == 0.0:
             passed = py == 0.0
-            rec.update(diff="∞" if not passed else "0.00000%", kind="numeric",
-                       passed=passed, both_na=False)
+            rec.update(
+                diff="∞" if not passed else "0.00000%",
+                kind="numeric",
+                passed=passed,
+                both_na=False,
+            )
         else:
             rel = abs(py - r) / abs(r) * 100.0
-            rec.update(diff=f"{rel:.5f}%", kind="numeric",
-                       passed=rel <= threshold_pct, both_na=False)
+            rec.update(
+                diff=f"{rel:.5f}%",
+                kind="numeric",
+                passed=rel <= threshold_pct,
+                both_na=False,
+            )
 
     elif col in BOOL_COLS:
         py = _to_bool(py_raw)
-        r  = _to_bool(r_raw)
+        r = _to_bool(r_raw)
         both_na = py is None and r is None
         rec.update(diff="—", kind="bool", passed=both_na or (py == r), both_na=both_na)
 
     elif col in PCT_STR_COLS:
         py = _to_pct_int(py_raw)
-        r  = _to_pct_int(r_raw)
+        r = _to_pct_int(r_raw)
         both_na = py is None and r is None
         if both_na:
             rec.update(diff="—", kind="pct", passed=True, both_na=True)
         elif py is None or r is None:
             rec.update(diff="one-NA", kind="pct", passed=False, both_na=False)
         else:
-            rec.update(diff=f"{abs(py - r)} pp", kind="pct", passed=(py == r), both_na=False)
+            rec.update(
+                diff=f"{abs(py - r)} pp", kind="pct", passed=(py == r), both_na=False
+            )
 
     else:
-        py_s = _normalise_trend_break(py_raw) if col == "Trend_Break" else _to_str(py_raw)
-        r_s  = _normalise_trend_break(r_raw)  if col == "Trend_Break" else _to_str(r_raw)
+        py_s = (
+            _normalise_trend_break(py_raw) if col == "Trend_Break" else _to_str(py_raw)
+        )
+        r_s = _normalise_trend_break(r_raw) if col == "Trend_Break" else _to_str(r_raw)
         both_na = py_s is None and r_s is None
-        rec.update(diff="—", kind="categorical", passed=both_na or (py_s == r_s), both_na=both_na)
+        rec.update(
+            diff="—",
+            kind="categorical",
+            passed=both_na or (py_s == r_s),
+            both_na=both_na,
+        )
 
     return rec
 
@@ -185,7 +217,9 @@ def _compare_well(
 ) -> list[dict]:
     results: list[dict] = []
     for col in _ALL_COLS:
-        rec = _compare_cell(col, py_row.get(col, np.nan), r_row.get(col, np.nan), threshold_pct)
+        rec = _compare_cell(
+            col, py_row.get(col, np.nan), r_row.get(col, np.nan), threshold_pct
+        )
         rec["well"] = well
         results.append(rec)
     return results
@@ -194,6 +228,7 @@ def _compare_well(
 # ---------------------------------------------------------------------------
 # Formatting helper (used by Excel writer)
 # ---------------------------------------------------------------------------
+
 
 def _fmt(val) -> str:
     if val is None or (isinstance(val, float) and np.isnan(val)):
@@ -206,6 +241,7 @@ def _fmt(val) -> str:
 # ---------------------------------------------------------------------------
 # Excel report
 # ---------------------------------------------------------------------------
+
 
 def _write_excel_report(
     all_results: list[dict],
@@ -221,27 +257,29 @@ def _write_excel_report(
         from openpyxl.styles import Alignment, Font, PatternFill
         from openpyxl.utils import get_column_letter
     except ImportError:
-        print("openpyxl not installed; cannot write Excel output. pip install openpyxl",
-              file=sys.stderr)
+        print(
+            "openpyxl not installed; cannot write Excel output. pip install openpyxl",
+            file=sys.stderr,
+        )
         return
 
     # Shared styles
-    PASS_FILL = PatternFill("solid", fgColor="C6EFCE")   # light green
-    FAIL_FILL = PatternFill("solid", fgColor="FFC7CE")   # light red
-    NA_FILL   = PatternFill("solid", fgColor="EDEDED")   # light grey
-    HDR_FILL  = PatternFill("solid", fgColor="2F5496")   # dark blue
-    META_FILL = PatternFill("solid", fgColor="D9E1F2")   # pale blue
-    PASS_BIG  = PatternFill("solid", fgColor="375623")   # dark green
-    FAIL_BIG  = PatternFill("solid", fgColor="9C0006")   # dark red
+    PASS_FILL = PatternFill("solid", fgColor="C6EFCE")  # light green
+    FAIL_FILL = PatternFill("solid", fgColor="FFC7CE")  # light red
+    NA_FILL = PatternFill("solid", fgColor="EDEDED")  # light grey
+    HDR_FILL = PatternFill("solid", fgColor="2F5496")  # dark blue
+    META_FILL = PatternFill("solid", fgColor="D9E1F2")  # pale blue
+    PASS_BIG = PatternFill("solid", fgColor="375623")  # dark green
+    FAIL_BIG = PatternFill("solid", fgColor="9C0006")  # dark red
 
-    WHITE_BOLD  = Font(bold=True, color="FFFFFF")
-    BOLD        = Font(bold=True)
+    WHITE_BOLD = Font(bold=True, color="FFFFFF")
+    BOLD = Font(bold=True)
     RESULT_FONT = Font(bold=True, size=16, color="FFFFFF")
-    CENTER      = Alignment(horizontal="center", vertical="center")
-    LEFT        = Alignment(horizontal="left",   vertical="center")
+    CENTER = Alignment(horizontal="center", vertical="center")
+    LEFT = Alignment(horizontal="left", vertical="center")
 
     failures = [r for r in all_results if not r["passed"]]
-    total    = len(all_results)
+    total = len(all_results)
     n_passed = sum(1 for r in all_results if r["passed"])
     n_failed = total - n_passed
 
@@ -256,9 +294,12 @@ def _write_excel_report(
 
     def _cell(row, col, value=None, font=None, fill=None, alignment=None):
         c = ws.cell(row, col, value)
-        if font:      c.font      = font
-        if fill:      c.fill      = fill
-        if alignment: c.alignment = alignment
+        if font:
+            c.font = font
+        if fill:
+            c.fill = fill
+        if alignment:
+            c.alignment = alignment
         return c
 
     r = 1
@@ -269,9 +310,9 @@ def _write_excel_report(
 
     for label, value in [
         ("Python CSV", str(py_csv)),
-        ("R CSV",      str(r_csv)),
-        ("Threshold",  f"≤ {threshold_pct}%  relative error (numeric columns)"),
-        ("Wells",      ", ".join(selected)),
+        ("R CSV", str(r_csv)),
+        ("Threshold", f"≤ {threshold_pct}%  relative error (numeric columns)"),
+        ("Wells", ", ".join(selected)),
     ]:
         _cell(r, 1, label, font=BOLD, fill=META_FILL, alignment=LEFT)
         _cell(r, 2, value, fill=META_FILL, alignment=LEFT)
@@ -280,17 +321,29 @@ def _write_excel_report(
 
     r += 1
     ws.row_dimensions[r].height = 30
-    _cell(r, 1, "OVERALL RESULT",
-          font=RESULT_FONT, fill=PASS_BIG if overall_passed else FAIL_BIG, alignment=CENTER)
-    _cell(r, 2, "PASS" if overall_passed else "FAIL",
-          font=RESULT_FONT, fill=PASS_BIG if overall_passed else FAIL_BIG, alignment=CENTER)
+    _cell(
+        r,
+        1,
+        "OVERALL RESULT",
+        font=RESULT_FONT,
+        fill=PASS_BIG if overall_passed else FAIL_BIG,
+        alignment=CENTER,
+    )
+    _cell(
+        r,
+        2,
+        "PASS" if overall_passed else "FAIL",
+        font=RESULT_FONT,
+        fill=PASS_BIG if overall_passed else FAIL_BIG,
+        alignment=CENTER,
+    )
     r += 2
 
     for label, value in [
         ("Wells tested", len(selected)),
-        ("Comparisons",  total),
-        ("Passed",       n_passed),
-        ("Failed",       n_failed),
+        ("Comparisons", total),
+        ("Passed", n_passed),
+        ("Failed", n_failed),
     ]:
         _cell(r, 1, label, font=BOLD)
         _cell(r, 2, value)
@@ -301,16 +354,24 @@ def _write_excel_report(
         f_hdrs = ["Well", "Column", "Type", "Python", "R", "Diff", "Result"]
         for col_idx, h in enumerate(f_hdrs, 1):
             c = ws.cell(r, col_idx, h)
-            c.font      = WHITE_BOLD
-            c.fill      = HDR_FILL
+            c.font = WHITE_BOLD
+            c.fill = HDR_FILL
             c.alignment = CENTER
         for col_letter, width in zip("ABCDEFG", [28, 34, 12, 20, 20, 14, 10]):
             ws.column_dimensions[col_letter].width = width
         r += 1
         for rec in failures:
             for col_idx, val in enumerate(
-                [rec["well"], rec["column"], rec["kind"],
-                 _fmt(rec["python"]), _fmt(rec["r"]), rec["diff"], "FAIL"], 1
+                [
+                    rec["well"],
+                    rec["column"],
+                    rec["kind"],
+                    _fmt(rec["python"]),
+                    _fmt(rec["r"]),
+                    rec["diff"],
+                    "FAIL",
+                ],
+                1,
             ):
                 ws.cell(r, col_idx, val).fill = FAIL_FILL
             r += 1
@@ -323,20 +384,33 @@ def _write_excel_report(
     for col_letter, width in zip("ABCDEFG", [28, 36, 14, 20, 20, 14, 10]):
         wd.column_dimensions[col_letter].width = width
 
-    for col_idx, h in enumerate(["Well", "Column", "Type", "Python", "R", "Diff", "Result"], 1):
+    for col_idx, h in enumerate(
+        ["Well", "Column", "Type", "Python", "R", "Diff", "Result"], 1
+    ):
         c = wd.cell(1, col_idx, h)
-        c.font      = WHITE_BOLD
-        c.fill      = HDR_FILL
+        c.font = WHITE_BOLD
+        c.fill = HDR_FILL
         c.alignment = CENTER
 
     wd.auto_filter.ref = f"A1:G{len(all_results) + 1}"
 
     for row_idx, rec in enumerate(all_results, 2):
-        fill = NA_FILL if rec.get("both_na") else (PASS_FILL if rec["passed"] else FAIL_FILL)
+        fill = (
+            NA_FILL
+            if rec.get("both_na")
+            else (PASS_FILL if rec["passed"] else FAIL_FILL)
+        )
         for col_idx, val in enumerate(
-            [rec["well"], rec["column"], rec["kind"],
-             _fmt(rec["python"]), _fmt(rec["r"]), rec["diff"],
-             "PASS" if rec["passed"] else "FAIL"], 1
+            [
+                rec["well"],
+                rec["column"],
+                rec["kind"],
+                _fmt(rec["python"]),
+                _fmt(rec["r"]),
+                rec["diff"],
+                "PASS" if rec["passed"] else "FAIL",
+            ],
+            1,
         ):
             wd.cell(row_idx, col_idx, val).fill = fill
 
@@ -347,6 +421,7 @@ def _write_excel_report(
 # ---------------------------------------------------------------------------
 # Interactive well selection
 # ---------------------------------------------------------------------------
+
 
 def _select_wells_interactively(available: list[str]) -> list[str]:
     print("\nAvailable wells (present in both Python and R outputs):\n")
@@ -397,6 +472,7 @@ def _select_wells_interactively(available: list[str]) -> list[str]:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
     control_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(DEFAULT_CONTROL)
 
@@ -412,11 +488,11 @@ def main() -> int:
     with open(control_path, "rb") as fh:
         ctrl = tomllib.load(fh)
 
-    py_csv            = Path(ctrl["python_csv"])
-    r_csv             = Path(ctrl["r_csv"])
-    threshold_pct     = float(ctrl.get("pass_threshold_pct", 0.1))
-    configured_wells  = ctrl.get("selected_wells", [])
-    excel_out_str     = ctrl.get("excel_output", "benchmark_results.xlsx")
+    py_csv = Path(ctrl["python_csv"])
+    r_csv = Path(ctrl["r_csv"])
+    threshold_pct = float(ctrl.get("pass_threshold_pct", 0.1))
+    configured_wells = ctrl.get("selected_wells", [])
+    excel_out_str = ctrl.get("excel_output", "benchmark_results.xlsx")
 
     for path, label in [(py_csv, "Python"), (r_csv, "R")]:
         if not path.exists():
@@ -424,7 +500,7 @@ def main() -> int:
             return 2
 
     df_py = pd.read_csv(py_csv, dtype=str)
-    df_r  = pd.read_csv(r_csv,  dtype=str)
+    df_r = pd.read_csv(r_csv, dtype=str)
 
     for label, df in [("Python", df_py), ("R", df_r)]:
         if "Name" not in df.columns:
@@ -432,11 +508,11 @@ def main() -> int:
             return 2
 
     df_py["Name"] = df_py["Name"].str.strip()
-    df_r["Name"]  = df_r["Name"].str.strip()
+    df_r["Name"] = df_r["Name"].str.strip()
 
     py_wells = set(df_py["Name"].dropna())
-    r_wells  = set(df_r["Name"].dropna())
-    common   = sorted(py_wells & r_wells)
+    r_wells = set(df_r["Name"].dropna())
+    common = sorted(py_wells & r_wells)
 
     if not common:
         print("ERROR: No wells in common between the two CSV files.", file=sys.stderr)
@@ -445,18 +521,21 @@ def main() -> int:
     if configured_wells:
         selected = [w for w in configured_wells if w in common]
         if not selected:
-            print("ERROR: None of the configured wells appear in both outputs.", file=sys.stderr)
+            print(
+                "ERROR: None of the configured wells appear in both outputs.",
+                file=sys.stderr,
+            )
             return 2
     else:
         selected = _select_wells_interactively(common)
 
     py_idx = df_py.set_index("Name")
-    r_idx  = df_r.set_index("Name")
+    r_idx = df_r.set_index("Name")
 
     all_results: list[dict] = []
     for well in selected:
         py_row = py_idx.loc[well]
-        r_row  = r_idx.loc[well]
+        r_row = r_idx.loc[well]
         if isinstance(py_row, pd.DataFrame):
             py_row = py_row.iloc[0]
         if isinstance(r_row, pd.DataFrame):

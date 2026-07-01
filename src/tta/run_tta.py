@@ -220,12 +220,15 @@ def main() -> None:
         logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
         logger.debug(f"ULAG wells: {len(ulags)}")
         logger.debug(f"NEWRS wells: {len(newrs_names)}")
-        
+
         if config.write_chem_output:
             chem_rs.to_parquet(
                 output_dir / f"Chem_TrendData_{config.run_id}.parquet", index=False
             )
-            logger.info("Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet", config.run_id)
+            logger.info(
+                "Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet",
+                config.run_id,
+            )
         logger.info("Done with prep, starting model...")
 
         res = do_tobit_rstyle(
@@ -242,10 +245,10 @@ def main() -> None:
         )
 
         # Build DataFrame from results; drop vcov (numpy arrays don't serialize to CSV).
-        # df_tobit.drop(columns=["vcov"], errors="ignore").to_csv(
-        #     output_dir / f"TTA_Results_{config.run_id}.csv", index=False
-        # )
         df_tobit = pd.DataFrame(res)
+        df_tobit.drop(columns=["vcov"], errors="ignore").to_csv(
+            output_dir / f"TTA_full_term_stats_{config.run_id}.csv", index=False
+        )
         df_tobit = pd.DataFrame(res).drop(columns=["vcov"], errors="ignore")
         logger.info(f"Step 04 complete: Tobit results rows={len(df_tobit)}")
         # logger.info(
