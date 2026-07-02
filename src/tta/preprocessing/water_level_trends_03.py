@@ -927,6 +927,8 @@ def flatten_water_level_trends(
                     "COD": _flatten_dt_value(ts.COD),
                     "AIC": _flatten_dt_value(ts.AIC),
                     "BIC": _flatten_dt_value(ts.BIC),
+                    "RES": np.atleast_1d(ts.RES).tolist(),
+                    "PRED": np.atleast_1d(ts.PRED).tolist(),
                 }
             )
 

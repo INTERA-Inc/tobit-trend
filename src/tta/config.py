@@ -63,7 +63,6 @@ class TrendConfig:
     dep: str
 
     # reporting
-    save_reports: bool
     gis_river_shapefile: Path
     gis_roads_shapefile: Path
     gis_ou_shapefile: Path
@@ -74,6 +73,9 @@ class TrendConfig:
     mcl_near_river: float
     mcl_far: float
     mcl_near_river_shapefile: Optional[Path]  # wells within 200 ft of river → MCL=mcl_near_river
+
+    # water-level regression report
+    wl_regression_report: bool
 
     @property
     def prior_year(self) -> int:
@@ -179,7 +181,6 @@ class TrendConfig:
             # model
             dep=raw["model"]["dep"],
             # reporting
-            save_reports=bool(raw.get("reporting", {}).get("save_reports", True)),
             gis_river_shapefile=Path(raw["reporting"]["gis_river_shapefile"]),
             gis_roads_shapefile=Path(raw["reporting"]["gis_roads_shapefile"]),
             gis_ou_shapefile=Path(raw["reporting"]["gis_ou_shapefile"]),
@@ -194,6 +195,9 @@ class TrendConfig:
                 Path(raw["reporting"]["mcl_near_river_shapefile"])
                 if raw.get("reporting", {}).get("mcl_near_river_shapefile")
                 else None
+            ),
+            wl_regression_report=bool(
+                raw.get("reporting", {}).get("wl_regression_report", False)
             ),
         )
         instance.validate_paths()

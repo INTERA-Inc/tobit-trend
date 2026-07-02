@@ -35,6 +35,7 @@ from tta.preprocessing.water_level_trends_03 import (
 from tta.preprocessing.tobit_prep_04 import run_script04_prep
 from tta.model.tobit_model_04 import do_tobit_rstyle
 from tta.reporting.generate_report_05 import generate_report
+from tta.reporting.wl_regression_report_05 import wl_regression_report
 from tta.reporting.validation_table import build_validation_table, load_near_river_wells
 
 MODEL_LOG = "log"
@@ -220,15 +221,12 @@ def main() -> None:
         logger.debug(f"Unique wells: {chem_rs['NAME'].nunique()}")
         logger.debug(f"ULAG wells: {len(ulags)}")
         logger.debug(f"NEWRS wells: {len(newrs_names)}")
-
+        
         if config.write_chem_output:
             chem_rs.to_parquet(
                 output_dir / f"Chem_TrendData_{config.run_id}.parquet", index=False
             )
-            logger.info(
-                "Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet",
-                config.run_id,
-            )
+            logger.info("Step 04 prep: chemistry output written to Chem_TrendData_%s.parquet", config.run_id)
         logger.info("Done with prep, starting model...")
 
         res = do_tobit_rstyle(
@@ -254,7 +252,7 @@ def main() -> None:
         # logger.info(
         #     f"Step 04 complete: Results written to {output_dir / f'TTA_Results_{config.run_id}.csv'}"
         # )
-
+        
         ##############################################
         # 04b - WRITE OUTPUT TABLE (tblSummary port) #
         ##############################################
@@ -310,6 +308,22 @@ def main() -> None:
             map_crs=config.map_crs,
             run_id=config.run_id,
         )
+
+        if config.wl_regression_report:
+            logger.info("Step 05b: Running water-level regression report")
+            wl_regression_report(
+                run_id=config.run_id,
+                output_dir=output_dir,
+                dist=dist,
+                wl_rs=wl_rs,
+                wl_trends=wl_trends_df,
+                wells=well,
+                gis_river_shapefile=config.gis_river_shapefile,
+                gis_roads_shapefile=config.gis_roads_shapefile,
+                gis_ou_shapefile=config.gis_ou_shapefile,
+                map_crs=config.map_crs,
+            )
+            logger.info("Step 05b complete: WL regression report generated")
 
         logger.info("Step 05 complete: reports generated for OUs: %s", ", ".join(ous))
         logger.info("Workflow completed successfully")

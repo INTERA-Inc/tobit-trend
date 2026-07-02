@@ -43,7 +43,7 @@ import pandas as pd
 DEFAULT_CHROMIUM_ANALYTE = "Chromium"
 DEFAULT_HEXCHROM_ANALYTE = "Hexavalent Chromium"
 DEFAULT_FILTERED_KEEP_VALUE = "Y"
-DEFAULT_COMBINED_ANALYTE_NAME = "Hex. Chromium and Fil. Chromium"
+DEFAULT_COMBINED_ANALYTE_NAME = "Hex. & Filt. Chromium"
 DEFAULT_DATE_FORMAT = "%m/%d/%Y %H:%M:%S"
 
 

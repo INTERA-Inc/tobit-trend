@@ -64,13 +64,13 @@ date1 = "2016-05-16"
 date2 = "2017-04-12"
 
 [reporting]
-save_reports = true
+wl_regression_report = true     # generate OLS water-level regression diagnostic PDF
 gis_river_shapefile = "input/GIS/HIGHRIV.shp"
 gis_roads_shapefile = "input/GIS/ROADS.shp"
 gis_ou_shapefile = "input/GIS/OU.shp"
 map_crs = "EPSG:2926"
 
-# Validation table settings 
+# Validation table settings
 save_validation_table = true
 # Maximum Contaminant Level (MCL) assignment
 mcl_near_river = 10.0        # MCL for wells within 200 ft of river
