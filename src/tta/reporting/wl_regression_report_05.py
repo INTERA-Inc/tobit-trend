@@ -42,19 +42,32 @@ FONT_SIZE_ANNOTATION = 6
 
 
 def plt_header(
-    page_fig: Figure, well_name: str, p_interp: float, distance_to_river: float
+    page_fig: Figure,
+    well_name: str,
+    p_interp: float,
+    p_trend: float,
+    distance_to_river: float,
 ) -> None:
     """Render well name and river-stage significance header."""
     page_fig.text(x=0.5, y=0.95, s=well_name, ha="center", va="top", fontsize=20)
 
+    if np.isnan(p_interp):
+        header_text = "No Correlation with River Stage"
+    else:
+        if p_trend < 0.05 and p_interp < 0.05 and distance_to_river < 1500:
+            sig_text = "Correlation with River Stage significant"
+        else:
+            sig_text = "Correlation with River Stage not significant"
+        header_text = (
+            f"Significance of River Stage (p-value): {p_interp:.2g}\n"
+            f"Distance to River: {round(distance_to_river)} m\n"
+            f"{sig_text}"
+        )
+
     page_fig.text(
         x=0.5,
         y=0.925,
-        s=f"""
-Significance of River Stage: {p_interp:.2g}
-Distance to River: {round(distance_to_river)} m
-{"Correlation with River Stage significant" if p_interp < 0.05 else "Correlation with River Stage not significant"}
-""",
+        s=header_text,
         ha="center",
         va="top",
         fontsize=10,
@@ -276,7 +289,14 @@ def plt_std_res_pred_wl(
     """Render standardized residuals vs predicted water-level diagnostic plot."""
     std_res_pred_wl_plot = page_fig.add_subplot(grid_spec[9:12, :])
     residuals: np.ndarray = np.array(wl_trends_well["RES"].iloc[0])
-    predicted_wl = wl_trends_well["PRED"].iloc[0]
+    pred_raw: np.ndarray = np.array(wl_trends_well["PRED"].iloc[0], dtype=float)
+    log_mode: str = wl_trends_well["LOG"].iloc[0]
+    if log_mode == "log":
+        predicted_wl = np.exp(pred_raw)
+    elif log_mode == "log10":
+        predicted_wl = 10.0 ** pred_raw
+    else:
+        predicted_wl = pred_raw
     std_residuals = residuals / np.std(residuals)
     std_res_pred_wl_plot.scatter(predicted_wl, std_residuals, s=16, c=COLOR_GREEN)
     std_res_pred_wl_plot.yaxis.set_major_locator(MultipleLocator(0.5))
@@ -391,13 +411,14 @@ def wl_regression_report(
             )
 
             p_interp: float = wl_trends_well["p_interp"].iloc[0]
+            p_trend: float = wl_trends_well["p_trend"].iloc[0]
             distance_to_river: float = dist.loc[dist["NAME"] == well_name, "DIST"].iloc[
                 0
             ]
             ou: str = wl_rs_well["OU"].iloc[0]
             gis_well = gis_wells[gis_wells["NAME"] == well_name]
 
-            plt_header(page_fig, well_name, p_interp, distance_to_river)
+            plt_header(page_fig, well_name, p_interp, p_trend, distance_to_river)
             plt_gis(
                 gis_wells=gis_wells,
                 ou=ou,

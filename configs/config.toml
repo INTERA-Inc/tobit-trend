@@ -3,7 +3,7 @@ name = "Tobit Trend Analysis"
 version = "0.1.0"
 
 [global_settings]
-run_id = "v6_051726"
+run_id = "v8_020726_full"
 output_dir = "outputs"
 global_min_date = "2008-01-01"   # lower data cutoff applied to both chemistry and water-level imports
 global_max_date = "2024-12-31"   # upper data cutoff applied to both chemistry and water-level imports
