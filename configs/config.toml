@@ -3,11 +3,12 @@ name = "Tobit Trend Analysis"
 version = "0.1.0"
 
 [global_settings]
-run_id = "v8_020726_full"
+run_id = "v8_020726_TERM_test"
 output_dir = "outputs"
 global_min_date = "2008-01-01"   # lower data cutoff applied to both chemistry and water-level imports
 global_max_date = "2024-12-31"   # upper data cutoff applied to both chemistry and water-level imports
 selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
+
 
 [calculate_distance] # script00 - CALCULATE DISTANCE
 well_info_well = "input/00_Data/WELL.csv"
@@ -26,7 +27,7 @@ well_filter_cols = ["OU", "STATUS"] # each well_column needs a mode (well_modes)
 well_filter_modes  = ["include", "exclude"] # either "include" or "exclude"
 well_filter_values = [
   ["100-KR-4", "100-HR-3-D", "100-HR-3-H"], # List of operational units to keep
-  ["DECOMMISSIONED-V", "DRILLING CANCELLED"] # List of well statuses to exclude
+  ["DECOMMISSIONED-V", "DRILLING CANCELLED", "CANDIDATE FOR DECOMMISSIONING"] # List of well statuses to exclude
 ]
 ## non-detect handling, etc.
 mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing

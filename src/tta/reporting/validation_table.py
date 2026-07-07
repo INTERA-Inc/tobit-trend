@@ -408,17 +408,23 @@ def build_validation_table(
             sorted(dt_nonmiss["TERM"].dropna().unique().tolist())
             if "TERM" in dt_nonmiss.columns else []
         )
-        n_terms = len(term_nums)
         well_term_limits = (term_limits or {}).get(str(well_name), {})
+        n_terms = len(well_term_limits) if well_term_limits else len(term_nums)
         term_dates: dict = {}
+
+        # Populate config-defined limits for every configured TERM, regardless
+        # of whether that TERM has any non-null chemistry observations.  This
+        # ensures the validation columns reflect all configured input TERMs,
+        # not just those that happen to have detected samples.
+        for _ti, (start_str, end_str) in well_term_limits.items():
+            term_dates[f"TERM{_ti}_min"] = start_str
+            term_dates[f"TERM{_ti}_max"] = end_str
+
+        # For TERMs present in the data but absent from the config limits
+        # (e.g. when term_limits was not computed), fall back to data-driven dates.
         for _t in term_nums:
             _ti = int(_t)
-            if _ti in well_term_limits:
-                start_str, end_str = well_term_limits[_ti]
-                term_dates[f"TERM{_ti}_min"] = start_str
-                term_dates[f"TERM{_ti}_max"] = end_str
-            else:
-                # Fallback: data-driven dates when no config boundary is available.
+            if _ti not in well_term_limits:
                 _t_events = dt_nonmiss.loc[dt_nonmiss["TERM"] == _t, "EVENT"]
                 term_dates[f"TERM{_ti}_min"] = (
                     str(_t_events.min().date()) if len(_t_events) > 0 else np.nan
@@ -547,10 +553,22 @@ def build_validation_table(
 
     if not rows:
         return pd.DataFrame(columns=_STATIC_COLUMNS)
-    max_terms = max((r.get("TERM", 0) or 0) for r in rows)
+    # Derive the column list from the highest TERM *number* seen across all
+    # rows, not from n_terms (which is the count of TERMs per well).  The two
+    # differ when TERM numbering is non-contiguous or doesn't start at 1 —
+    # e.g. a well whose only non-null VAL data falls in TERM 4 has n_terms=1
+    # but needs a TERM4_min/max column, not TERM1_min/max.
+    max_term_num = 0
+    for r in rows:
+        for k in r:
+            if k.startswith("TERM") and k.endswith("_min"):
+                try:
+                    max_term_num = max(max_term_num, int(k[4:-4]))
+                except ValueError:
+                    pass
     term_date_cols = [
         col
-        for t in range(1, max_terms + 1)
+        for t in range(1, max_term_num + 1)
         for col in (f"TERM{t}_min", f"TERM{t}_max")
     ]
     return pd.DataFrame(rows, columns=_STATIC_COLUMNS + term_date_cols)

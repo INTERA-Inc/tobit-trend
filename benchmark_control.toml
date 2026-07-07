@@ -2,14 +2,14 @@
 # Run: python benchmark.py [benchmark_control.toml]
 
 # Path to the Python TTA validation CSV (TTA_Validation_<run_id>.csv)
-python_csv = "outputs/v6_051726_N_fix/TTA_Validation_v6_051726_N_fix.csv"
+python_csv = "outputs/v8_020726_TERM_test/TTA_Results_v8_020726_TERM_test.csv"
 
 # Path to the legacy R tool validation CSV
 r_csv = "reference/R_legacy_results_v10_063025.csv"
 
 # Wells to compare.  Leave empty ([]) to select interactively from those
 # present in both files.
-selected_wells = ["199-D5-123", "199-H3-9"]
+selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"]
 
 # Relative error threshold (percent) for numeric columns.
 # A column passes if |python - r| / |r| * 100 <= pass_threshold_pct.

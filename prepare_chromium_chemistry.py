@@ -20,24 +20,13 @@ The output is intended to be used as the chemistry input to the main workflow.
 
 Example
 -------
-Run from the project root.
+Run from the project root:
 
-cmd.exe (use ^ for line continuation):
-
-    python src/tta/preprocessing/prepare_chromium_chemistry.py ^
-        --chem-files input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt ^
-                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt ^
-                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_3.txt ^
-        --year 2024 ^
-        --output input/prepared_chemistry/prepared_chemistry_2024.parquet
-
-PowerShell (use backtick for line continuation):
-
-    python src/tta/preprocessing/prepare_chromium_chemistry.py `
-        --chem-files input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt `
-                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt `
-                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_3.txt `
-        --year 2024 `
+    python src/preprocessing/prepare_chromium_chemistry.py \
+        --chem-files input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt \
+                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt \
+                     input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_3.txt \
+        --year 2024 \
         --output input/prepared_chemistry/prepared_chemistry_2024.parquet
 
 """

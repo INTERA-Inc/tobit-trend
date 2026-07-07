@@ -319,13 +319,11 @@ def compute_term_limits(
 
             if term_num not in term_limits:
                 term_limits[term_num] = (str(ps.date()), str(pe.date()))
-            else:
-                # Merge adjacent periods that map to the same TERM number.
-                old_start, old_end = term_limits[term_num]
-                term_limits[term_num] = (
-                    min(old_start, str(ps.date())),
-                    max(old_end, str(pe.date())),
-                )
+            # If this TERM number appears again in a later non-contiguous block
+            # (e.g. a manual break creates TERM3 in the middle, and the original
+            # TERM2 resumes afterwards), skip it.  Recording only the first
+            # contiguous block correctly reflects the config-defined boundary for
+            # each TERM without spanning over intermediate periods.
 
         result[well_name_str] = term_limits
 
