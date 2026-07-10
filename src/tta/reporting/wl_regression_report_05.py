@@ -1,4 +1,5 @@
 import logging
+import math
 
 from matplotlib.lines import Line2D
 import numpy as np
@@ -350,7 +351,17 @@ def plt_std_res_pred_wl(
     else:
         predicted_wl = pred_raw
     std_residuals = residuals / np.std(residuals)
-    std_res_pred_wl_plot.scatter(predicted_wl, std_residuals, s=16, c=COLOR_GREEN)
+    std_res_pred_wl_plot.plot(
+        predicted_wl, 
+        std_residuals, 
+        marker="o",
+        markersize=4,
+        linewidth=1,
+        linestyle="None",
+        markerfacecolor=COLOR_LIGHT_GREEN,
+        markeredgewidth=0.75,
+        markeredgecolor=COLOR_GREEN,
+    )
     std_res_pred_wl_plot.yaxis.set_major_locator(MultipleLocator(0.5))
     std_res_pred_wl_plot.set_facecolor(COLOR_LIGHT_GRAY)
     std_res_pred_wl_plot.grid(True, linewidth=0.5, color=COLOR_WHITE)
