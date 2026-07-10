@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from tqdm import tqdm
 
 import matplotlib
 
@@ -136,7 +137,18 @@ def plt_cross_cor_lag(
     """Render cross-correlation lag plot."""
     cross_cor_lag_plot = page_fig.add_subplot(grid_spec[4:7, 0:2])
     cod: pd.Series = wl_trends_well["COD"]
-    cod_df = pd.DataFrame(list(cod.iloc[0]))
+    cod_val = cod.iloc[0]
+    if not isinstance(cod_val, (list, dict)) and pd.isna(cod_val):
+        cross_cor_lag_plot.text(
+            0.5, 0.5, "No cross-correlation data",
+            ha="center", va="center", transform=cross_cor_lag_plot.transAxes,
+            fontsize=FONT_SIZE_AXIS_LABELS, color=COLOR_DARK_GRAY,
+        )
+        cross_cor_lag_plot.set_facecolor(COLOR_LIGHT_GRAY)
+        cross_cor_lag_plot.set_xlabel("Lag Time (days)")
+        cross_cor_lag_plot.set_ylabel("Cross Correlation Coefficient")
+        return
+    cod_df = pd.DataFrame(list(cod_val))
     lags: pd.Series = cod_df["lag"]
     acfs: pd.Series = cod_df["acf"]
     max_acf_idx = np.argmax(acfs)
@@ -384,12 +396,10 @@ def wl_regression_report(
 
     n_wells = len(wells)
     with PdfPages(out_path) as pdf:
-        for i in range(n_wells):
+        for i in tqdm(range(n_wells), desc="WL regression", unit="well", leave=True):
             well: pd.Series = wells.iloc[i]
             well_name = well["NAME"]
-            logger.info(
-                "WL regression report: well %d/%d — %s", i + 1, n_wells, well_name
-            )
+            logger.debug("WL regression report: well %d/%d — %s", i + 1, n_wells, well_name)
 
             wl_rs_well = wl_rs.loc[wl_rs["NAME"] == well_name]
             wl_trends_well = wl_trends.loc[wl_trends["NAME"] == well_name]

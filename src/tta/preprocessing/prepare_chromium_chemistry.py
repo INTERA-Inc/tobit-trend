@@ -1,6 +1,4 @@
 """
-prepare_chromium_chemistry.py
-
 Prepare chromium chemistry data outside the main groundwater trend workflow.
 
 Purpose
@@ -143,6 +141,9 @@ def prepare_chromium_chemistry(
     4. Preserve original analyte in ANALYTE_ORG.
     5. Rename ANALYTE to the combined analyte name.
     """
+    if combined_analyte_name is None:
+        combined_analyte_name = DEFAULT_COMBINED_ANALYTE_NAME
+
     if not chem_files:
         raise ValueError("No chemistry files supplied.")
 

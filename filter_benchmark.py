@@ -69,7 +69,7 @@ def _load_chem_config(raw: dict) -> tuple[list[Path], list, list, float, str, pd
     """Return chemistry filter settings from parsed TOML."""
     pc  = raw["prep_chemistry"]
     gs  = raw["global_settings"]
-    chem_files        = [Path(p) for p in pc["chemistry_files"]]
+    chem_files        = [Path(p) for p in pc["raw_chemistry_files"]]
     reviewq_patterns  = list(pc.get("reviewq_remove_patterns",   []))
     purpose_exclude   = list(pc.get("collection_purpose_exclude", []))
     mdl_sub           = float(pc.get("mdl_sub_if_nonpositive_missing", 1.0))

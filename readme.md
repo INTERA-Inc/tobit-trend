@@ -14,23 +14,24 @@ project-root/
 ├── README.md
 ├── environment.yml
 ├── configs/
-│   └── trend_config.toml
+│   └── config.toml
 ├── input/
 │   └── ...
 └── src/
     └── tta/
-        ├── run.py
+        ├── run_tta.py
         ├── config.py
         ├── utils.py
         ├── preprocessing/
         │   ├── prepare_chromium_chemistry.py
+        │   ├── prepare_chemistry_data.py
         │   ├── calculate_distance_00.py
         │   ├── chemistry_import_01.py
         │   ├── water_level_import_02.py
         │   ├── water_level_trends_03.py
         │   └── tobit_prep_04.py
         ├── model/
-        │   └── tobit_model_04_mod.py
+        │   └── tobit_model_04.py
         └── reporting/
             └── generate_report_05.py
 ```
@@ -70,27 +71,35 @@ tta configs/config.toml
 Alternative:
 
 ```bash
-python -m tta.run configs/config.toml
+python -m tta.run_tta configs/config.toml
 ```
 
-The TOML paths are expected to be relative to the project root.
+Paths in the TOML are expected to be relative to the project root.
 
-The paths in the TOML are expected to be relative to the project root.
+## Chemistry preparation
 
-## Chromium chemistry preparation
+Raw HEIS chemistry TXT files are listed directly in `config.toml`. Chemistry preparation runs automatically as the first part of Step 01, with the mode controlled by `chem_prep_mode`:
 
-Chromium-specific chemistry preparation is handled outside the main workflow.
-
-Run:
-
-```bash
-prepare-chromium-chemistry \
-  --chem-files input/00_Data/Chemistry_Data/CY24/file1.txt input/00_Data/Chemistry_Data/CY24/file2.txt \
-  --year 2024 \
-  --output input/prepared_chemistry/prepared_chemistry_2024.parquet
+```toml
+[prep_chemistry]
+raw_chemistry_files = [
+  "input/00_Data/Chemistry_Data/CY24/file1.txt",
+  "input/00_Data/Chemistry_Data/CY24/file2.txt",
+]
+chem_prep_mode = "chromium"   # or "single"
 ```
 
-The generated parquet file is then supplied to the main workflow as analyte-neutral chemistry input.
+**`"chromium"` mode** — combines filtered total Chromium and Hexavalent Chromium into a single analyte stream. Use for chromium plume monitoring.
+
+**`"single"` mode** — retains one analyte by name. Use for analytes with a single constituent of concern (e.g. Nitrate):
+
+```toml
+chem_prep_mode = "single"
+analyte = "Nitrate"
+# filtered_keep_value = "Y"    # optional FILTERED column restriction
+```
+
+The prepared dataset is written to `<output_dir>/prepared_chemistry_<run_id>.parquet` for diagnostic inspection.
 
 ## Outputs
 
@@ -99,10 +108,10 @@ Outputs are written to the configured output directory and run-version subfolder
 Typical outputs include:
 
 ```text
-DIST.csv
-STAGEDIST.csv
+prepared_chemistry_<run_id>.parquet
 Chem_TrendData_<run_id>.parquet
-TTA_results_<run_id>.csv
+TTA_full_term_stats_<run_id>.csv
+TTA_Results_<run_id>.csv
 TobitRegression_WLlag_<OU>_<run_id>.pdf
 tta.log
 ```
@@ -130,7 +139,10 @@ Calculates well distance to the river and distance to river-stage gauges. These 
 
 ### Step 01 — Chemistry preprocessing
 
-Imports and processes chemistry data. It handles non-detects, applies filters, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
+Reads raw HEIS TXT files and prepares the chemistry dataset for modelling. The step runs in two phases:
+
+1. **Raw data preparation** — analyte selection and filtering via `prepare_chromium_chemistry` or `prepare_chemistry_data` depending on `chem_prep_mode`. The prepared dataset is written to `output_dir` as a parquet.
+2. **Chemistry import** — non-detect handling, REVIEWQ and collection-purpose filtering, daily averaging, and joining of river-stage, well metadata, and screen interval data.
 
 ### Step 02 — Water-level preprocessing
 

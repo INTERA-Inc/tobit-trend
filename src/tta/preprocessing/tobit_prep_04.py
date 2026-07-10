@@ -109,6 +109,8 @@ def compress_empty_terms_per_well(df: pd.DataFrame) -> pd.DataFrame:
         g["TERM"] = term_num
         out.append(g)
 
+    if not out:
+        return pd.DataFrame(columns=df.columns)
     return pd.concat(out, ignore_index=True)
 
 

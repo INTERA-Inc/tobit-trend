@@ -8,6 +8,15 @@ import tomllib
 import pandas as pd
 
 
+def _parse_analyte_list(val) -> list[str]:
+    """Accept a single analyte string or a list from TOML."""
+    if val is None:
+        return []
+    if isinstance(val, str):
+        return [val]
+    return [str(a) for a in val]
+
+
 @dataclass(frozen=True)
 class TrendConfig:
     """
@@ -26,8 +35,15 @@ class TrendConfig:
     gauge_locs: Path
     river_shapefile: Path
 
+    # chemistry preparation - pre-step 01
+    raw_chemistry_files: list[Path]
+    chem_prep_mode: str             # "chromium" | "single"
+    chem_analytes: list[str]        # one or more analytes for "single" mode
+    chem_combined_analyte_name: Optional[str]   # optional rename; defaults to analyte name
+    chem_filtered_keep_value: Optional[str]     # optional FILTERED column filter
+    unit_conversions: list[dict]               # [{analyte, from_unit, to_unit, factor}]
+
     # run_chemistry_import - script01
-    chemistry_files: list[Path]
     river_stage_file: Path
     well_info_screen: Path
     well_filter_cols: list[str]
@@ -102,8 +118,8 @@ class TrendConfig:
             if isinstance(val, Path) and not val.exists():
                 missing.append(str(val))
 
-        # chemistry_files is list[Path]
-        for p in self.chemistry_files:
+        # raw_chemistry_files is list[Path]
+        for p in self.raw_chemistry_files:
             if not p.exists():
                 missing.append(str(p))
 
@@ -132,8 +148,14 @@ class TrendConfig:
             well_info_well=Path(raw["calculate_distance"]["well_info_well"]),
             gauge_locs=Path(raw["calculate_distance"]["gauge_locs"]),
             river_shapefile=Path(raw["calculate_distance"]["river_shapefile"]),
+            # chemistry preparation - pre-step 01
+            raw_chemistry_files=[Path(p) for p in raw["prep_chemistry"]["raw_chemistry_files"]],
+            chem_prep_mode=str(raw["prep_chemistry"].get("chem_prep_mode", "chromium")),
+            chem_analytes=_parse_analyte_list(raw["prep_chemistry"].get("analyte")),
+            chem_combined_analyte_name=raw["prep_chemistry"].get("combined_analyte_name") or None,
+            chem_filtered_keep_value=raw["prep_chemistry"].get("filtered_keep_value") or None,
+            unit_conversions=list(raw["prep_chemistry"].get("unit_conversions", [])),
             # run_chemistry_import - script01
-            chemistry_files=[Path(p) for p in raw["prep_chemistry"]["chemistry_files"]],
             river_stage_file=Path(raw["prep_chemistry"]["river_stage_file"]),
             well_info_screen=Path(raw["prep_chemistry"]["well_info_screen"]),
             well_filter_cols=list(raw["prep_chemistry"].get("well_filter_cols", [])),

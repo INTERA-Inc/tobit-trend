@@ -3,12 +3,11 @@ name = "Tobit Trend Analysis"
 version = "0.1.0"
 
 [global_settings]
-run_id = "v8_020726_TERM_test"
+run_id = "v6_051726"
 output_dir = "outputs"
 global_min_date = "2008-01-01"   # lower data cutoff applied to both chemistry and water-level imports
 global_max_date = "2024-12-31"   # upper data cutoff applied to both chemistry and water-level imports
 selected_wells = ["199-D1-1", "199-D4-103", "199-D4-14"] # Optional: if empty or omitted → process all wells
-
 
 [calculate_distance] # script00 - CALCULATE DISTANCE
 well_info_well = "input/00_Data/WELL.csv"
@@ -16,9 +15,17 @@ gauge_locs = "input/00_Data/Trend_Analysis_Data/RiverGageLocations-2-21-2020.csv
 river_shapefile = "input/00_Data/Trend_Analysis_Data/rivKrigeHigh.shp"
 
 [prep_chemistry] # script01 - PREP CHEMISTRY DATA
-chemistry_files = [
-  "input/prepared_chemistry/prepared_chemistry_2024.parquet"
+raw_chemistry_files = [
+  "input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_1.txt",
+  "input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_2.txt",
+  "input/00_Data/Chemistry_Data/CY24/qry_GW_REPORT_CY2024_GWSR_3.txt",
 ]
+chem_prep_mode = "chromium"   # "chromium" | "single"
+# single-analyte options (required when chem_prep_mode = "single")
+# analyte = ["Nitrate"]                       # one analyte
+# analyte = ["Nitrate", "Uranium"]            # multiple analytes — workflow loops over each
+# filtered_keep_value = "Y"                   # optional; omit to keep all FILTERED values
+# combined_analyte_name = "Nitrate"           # optional; overrides ANALYTE label in output
 river_stage_file = "input/00_Data/STAGE_COMB.csv"
 well_info_screen = "input/00_Data/SCREEN.csv"
 
@@ -27,7 +34,7 @@ well_filter_cols = ["OU", "STATUS"] # each well_column needs a mode (well_modes)
 well_filter_modes  = ["include", "exclude"] # either "include" or "exclude"
 well_filter_values = [
   ["100-KR-4", "100-HR-3-D", "100-HR-3-H"], # List of operational units to keep
-  ["DECOMMISSIONED-V", "DRILLING CANCELLED", "CANDIDATE FOR DECOMMISSIONING"] # List of well statuses to exclude
+  ["DECOMMISSIONED-V", "DRILLING CANCELLED"] # List of well statuses to exclude
 ]
 ## non-detect handling, etc.
 mdl_sub_if_nonpositive_missing = 1.0 #fill MDL when VAL <= 0 and MDL is missing
@@ -36,6 +43,12 @@ collection_purpose_exclude = ["IH", "C", "VAR", "VP", "RC", "WM", "S", "PE", "T"
 duplicate_handling = "daily_avg" # how to handle duplicate samples; placeholder for future options
 write_chem_output = true          # write intermediate preprocessed chemistry parquet to output_dir
 # max_date = "2024-12-31"  # optional override; defaults to global_max_date
+
+## Unit conversions: applied to VAL, MDL and UNIT before any processing.
+## Each entry: analyte (as it appears in the prepared chemistry data), from_unit, to_unit, factor.
+unit_conversions = [
+  {analyte = "Nitrate", from_unit = "ug/L", to_unit = "mg/L", factor = 0.001}
+]
 
 [prep_wl] # script02 - PREP WATER LEVEL DATA
 wl_file = "input/00_Data/01_combined_hourly_AWLN_HEIS_CY06_24_v1_031225.csv"
