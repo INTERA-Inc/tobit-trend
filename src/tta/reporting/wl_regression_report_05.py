@@ -259,27 +259,16 @@ def plt_wl_rs_timeseries(
     wl_elevation_axis.tick_params(axis="x", labelrotation=90)
     wl_elevation_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
+    wl_ymin = math.floor(wl_elevations_clean.min())
+    wl_ymax = math.ceil(wl_elevations_clean.max())
+    wl_ticks = np.linspace(wl_ymin, wl_ymax, 6)
+    wl_elevation_axis.set_yticks(wl_ticks)
+
     min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
     max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
     stage_ymin = min_stage - 0.25
     stage_ymax = max_stage + 0.25
     ticks = np.arange(min_stage, max_stage + 2, 2)
-
-    wl_ymin = np.nanmin(
-        [
-            wl_rs_well["BOT"].iloc[0],
-            wl_rs_well["TOP"].iloc[0],
-            wl_elevations_clean.min(),
-        ]
-    )
-    wl_ymax = np.nanmax(
-        [
-            wl_rs_well["BOT"].iloc[0],
-            wl_rs_well["TOP"].iloc[0],
-            wl_elevations_clean.max(),
-        ]
-    )
-    wl_elevation_axis.set_ylim(wl_ymin, wl_ymax)
 
     # Right axis is display-only. River stage is scaled and drawn on the
     # water-level axis so it stays behind water-level observations.
