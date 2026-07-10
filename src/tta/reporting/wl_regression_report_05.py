@@ -1,10 +1,10 @@
 import logging
+import math
 
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from tqdm import tqdm
-
 import matplotlib
 
 matplotlib.use("Agg")
@@ -14,7 +14,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.gridspec import GridSpec
 from matplotlib.axes import Axes
 from matplotlib.dates import DateFormatter, YearLocator
-from matplotlib.ticker import FormatStrFormatter, MultipleLocator
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 
 from pathlib import Path
 from typing import Tuple
@@ -28,11 +28,13 @@ GRID_WSPACE, GRID_HSPACE = 0.5, 4
 COLOR_LIGHT_GRAY = "#E5E5E5"
 COLOR_BLACK = "#000000"
 COLOR_GREEN = "#006400"
+COLOR_LIGHT_GREEN = "#00640080"
 COLOR_DARK_GRAY = "#B3B3B3"
 COLOR_GRAY_EDGE = "#7F7F7F"
 COLOR_RED = "#FF0000"
 COLOR_LIGHT_BLUE = "#97C4EF"
 COLOR_BISQUE = "bisque"
+COLOR_WHITE = "#FFFFFF"
 
 # GIS map bounds — site-specific; match generate_report_05.py
 GIS_X_MIN, GIS_X_MAX = 561500, 586000
@@ -133,22 +135,11 @@ def plt_gis(
 
 def plt_cross_cor_lag(
     page_fig: Figure, grid_spec: GridSpec, wl_trends_well: pd.DataFrame
-) -> None:
+) -> int:
     """Render cross-correlation lag plot."""
     cross_cor_lag_plot = page_fig.add_subplot(grid_spec[4:7, 0:2])
     cod: pd.Series = wl_trends_well["COD"]
-    cod_val = cod.iloc[0]
-    if not isinstance(cod_val, (list, dict)) and pd.isna(cod_val):
-        cross_cor_lag_plot.text(
-            0.5, 0.5, "No cross-correlation data",
-            ha="center", va="center", transform=cross_cor_lag_plot.transAxes,
-            fontsize=FONT_SIZE_AXIS_LABELS, color=COLOR_DARK_GRAY,
-        )
-        cross_cor_lag_plot.set_facecolor(COLOR_LIGHT_GRAY)
-        cross_cor_lag_plot.set_xlabel("Lag Time (days)")
-        cross_cor_lag_plot.set_ylabel("Cross Correlation Coefficient")
-        return
-    cod_df = pd.DataFrame(list(cod_val))
+    cod_df = pd.DataFrame(list(cod.iloc[0]))
     lags: pd.Series = cod_df["lag"]
     acfs: pd.Series = cod_df["acf"]
     max_acf_idx = np.argmax(acfs)
@@ -178,11 +169,22 @@ def plt_cross_cor_lag(
     cross_cor_lag_plot.set_xlabel("Lag Time (days)")
     cross_cor_lag_plot.set_ylabel("Cross Correlation Coefficient")
     cross_cor_lag_plot.set_facecolor(COLOR_LIGHT_GRAY)
-    cross_cor_lag_plot.grid(True, linewidth=0.5, color="#FFFFFF")
+    cross_cor_lag_plot.grid(True, linewidth=0.5, color=COLOR_WHITE)
     cross_cor_lag_plot.set_axisbelow(True)
 
+    lag_handle = Line2D([], [], linestyle="-", color=COLOR_BLACK, marker="o")
+    cross_cor_lag_plot.legend(
+        handles=[lag_handle],
+        labels=["Optimized Lag Time (days)"],
+        fontsize=FONT_SIZE_ANNOTATION,
+    )
 
-def plt_wl_rs(page_fig: Figure, grid_spec: GridSpec, wl_rs_well: pd.DataFrame) -> None:
+    return lag_max_acf
+
+
+def plt_wl_rs(
+    page_fig: Figure, grid_spec: GridSpec, wl_rs_well: pd.DataFrame, lag_time: int
+) -> None:
     """Render water-level vs river-stage scatter with OLS trend line."""
     wl_rs_axis = page_fig.add_subplot(grid_spec[4:7, 2:4])
     wl_rs_well_clean = wl_rs_well[wl_rs_well["WLE"].notna()]
@@ -193,8 +195,17 @@ def plt_wl_rs(page_fig: Figure, grid_spec: GridSpec, wl_rs_well: pd.DataFrame) -
     sort_indexes = np.argsort(river_stages_clean.to_numpy())
     river_stages_clean_sorted = river_stages_clean.to_numpy()[sort_indexes]
     wl_rs_trend_sorted = wl_rs_trend.to_numpy()[sort_indexes]
-    wl_rs_axis.scatter(
-        river_stages_clean, wl_elevations_clean, s=16, c=COLOR_GREEN, zorder=2
+    wl_rs_axis.plot(
+        river_stages_clean, 
+        wl_elevations_clean, 
+        marker="o",
+        markersize=4,
+        linewidth=1,
+        linestyle="None",
+        markerfacecolor=COLOR_LIGHT_GREEN,
+        markeredgewidth=0.75,
+        markeredgecolor=COLOR_GREEN,
+        zorder=2,
     )
     wl_rs_axis.plot(
         river_stages_clean_sorted,
@@ -203,29 +214,44 @@ def plt_wl_rs(page_fig: Figure, grid_spec: GridSpec, wl_rs_well: pd.DataFrame) -
         linestyle="--",
     )
     wl_rs_axis.set_facecolor(COLOR_LIGHT_GRAY)
-    wl_rs_axis.grid(True, linewidth=0.5, color="#FFFFFF")
+    wl_rs_axis.grid(True, linewidth=0.5, color=COLOR_WHITE)
     wl_rs_axis.set_axisbelow(True)
     wl_rs_axis.set_xlabel("River Stage (m amsl)")
     wl_rs_axis.set_ylabel("Water-Level (m amsl)")
+    wl_rs_axis.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+    wl_rs_axis.text(
+        0.02,
+        0.97,
+        f"Lag Time = {lag_time} days",
+        fontsize=FONT_SIZE_ANNOTATION,
+        transform=wl_rs_axis.transAxes,
+        ha="left",
+        va="top",
+        bbox=dict(
+            facecolor=COLOR_WHITE,
+            edgecolor=COLOR_BLACK,
+            linewidth=0.5
+        ),
+    )
 
 
 def plt_wl_rs_timeseries(
-    wl_rs_well: pd.DataFrame,
     page_fig: Figure,
     grid_spec: GridSpec,
+    wl_rs_well: pd.DataFrame,
+    lag_time: int,
 ) -> Tuple[Axes, Axes]:
     """Render dual-axis water-level and river-stage time series."""
     wl_elevations: pd.Series = pd.to_numeric(wl_rs_well["WLE"], errors="coerce")
-    wl_river_stages: pd.Series = pd.to_numeric(
-        wl_rs_well["INTERP"], errors="coerce"
-    )
+    wl_river_stages: pd.Series = pd.to_numeric(wl_rs_well["INTERP"], errors="coerce")
     wl_trends_dates = pd.to_datetime(wl_rs_well["EVENT"], errors="coerce")
     wl_elevations_clean = wl_elevations[~np.isnan(wl_elevations)]
     wl_trends_dates_clean = wl_trends_dates[~np.isnan(wl_elevations)]
 
     wl_elevation_axis = page_fig.add_subplot(grid_spec[7:9, :])
     wl_elevation_axis.set_facecolor(COLOR_LIGHT_GRAY)
-    wl_elevation_axis.grid(True, linewidth=0.5, color="#FFFFFF")
+    wl_elevation_axis.grid(True, linewidth=0.5, color=COLOR_WHITE)
     wl_elevation_axis.set_axisbelow(True)
     wl_elevation_axis.xaxis.set_major_locator(YearLocator())
     wl_elevation_axis.xaxis.set_major_formatter(DateFormatter("%Y"))
@@ -233,27 +259,16 @@ def plt_wl_rs_timeseries(
     wl_elevation_axis.tick_params(axis="x", labelrotation=90)
     wl_elevation_axis.tick_params(axis="y", labelsize=FONT_SIZE_AXIS_LABELS)
 
+    wl_ymin = math.floor(wl_elevations_clean.min())
+    wl_ymax = math.ceil(wl_elevations_clean.max())
+    wl_ticks = np.linspace(wl_ymin, wl_ymax, 6)
+    wl_elevation_axis.set_yticks(wl_ticks)
+
     min_stage = 2 * np.floor((wl_river_stages.min(skipna=True) - 1) / 2) + 1
     max_stage = 2 * np.ceil((wl_river_stages.max(skipna=True) - 1) / 2) + 1
     stage_ymin = min_stage - 0.25
     stage_ymax = max_stage + 0.25
     ticks = np.arange(min_stage, max_stage + 2, 2)
-
-    wl_ymin = np.nanmin(
-        [
-            wl_rs_well["BOT"].iloc[0],
-            wl_rs_well["TOP"].iloc[0],
-            wl_elevations_clean.min(),
-        ]
-    )
-    wl_ymax = np.nanmax(
-        [
-            wl_rs_well["BOT"].iloc[0],
-            wl_rs_well["TOP"].iloc[0],
-            wl_elevations_clean.max(),
-        ]
-    )
-    wl_elevation_axis.set_ylim(wl_ymin, wl_ymax)
 
     # Right axis is display-only. River stage is scaled and drawn on the
     # water-level axis so it stays behind water-level observations.
@@ -276,7 +291,7 @@ def plt_wl_rs_timeseries(
         linestyle="-",
         color=COLOR_GREEN,
         markersize=4,
-        markerfacecolor="#FFFFFF",
+        markerfacecolor=COLOR_LIGHT_GREEN,
         markeredgewidth=0.75,
         markeredgecolor=COLOR_GREEN,
         label="Water-Level",
@@ -290,6 +305,21 @@ def plt_wl_rs_timeseries(
         color=COLOR_LIGHT_BLUE,
         label="River Stage",
         zorder=1,
+    )
+
+    wl_river_stage_axis.text(
+        0.0075,
+        0.94,
+        f"Lag Time = {lag_time} days",
+        fontsize=FONT_SIZE_ANNOTATION,
+        transform=wl_elevation_axis.transAxes,
+        ha="left",
+        va="top",
+        bbox=dict(
+            facecolor=COLOR_WHITE,
+            edgecolor=COLOR_BLACK,
+            linewidth=0.5
+        ),
     )
 
     return wl_elevation_axis, wl_river_stage_axis
@@ -306,14 +336,24 @@ def plt_std_res_pred_wl(
     if log_mode == "log":
         predicted_wl = np.exp(pred_raw)
     elif log_mode == "log10":
-        predicted_wl = 10.0 ** pred_raw
+        predicted_wl = 10.0**pred_raw
     else:
         predicted_wl = pred_raw
     std_residuals = residuals / np.std(residuals)
-    std_res_pred_wl_plot.scatter(predicted_wl, std_residuals, s=16, c=COLOR_GREEN)
+    std_res_pred_wl_plot.plot(
+        predicted_wl, 
+        std_residuals, 
+        marker="o",
+        markersize=4,
+        linewidth=1,
+        linestyle="None",
+        markerfacecolor=COLOR_LIGHT_GREEN,
+        markeredgewidth=0.75,
+        markeredgecolor=COLOR_GREEN,
+    )
     std_res_pred_wl_plot.yaxis.set_major_locator(MultipleLocator(0.5))
     std_res_pred_wl_plot.set_facecolor(COLOR_LIGHT_GRAY)
-    std_res_pred_wl_plot.grid(True, linewidth=0.5, color="#FFFFFF")
+    std_res_pred_wl_plot.grid(True, linewidth=0.5, color=COLOR_WHITE)
     std_res_pred_wl_plot.set_axisbelow(True)
     std_res_pred_wl_plot.set_xlabel("Predicted Water-Level (m amsl)")
     std_res_pred_wl_plot.set_ylabel("Standardized Residuals")
@@ -396,10 +436,12 @@ def wl_regression_report(
 
     n_wells = len(wells)
     with PdfPages(out_path) as pdf:
-        for i in tqdm(range(n_wells), desc="WL regression", unit="well", leave=True):
+        for i in range(n_wells):
             well: pd.Series = wells.iloc[i]
             well_name = well["NAME"]
-            logger.debug("WL regression report: well %d/%d — %s", i + 1, n_wells, well_name)
+            logger.info(
+                "WL regression report: well %d/%d — %s", i + 1, n_wells, well_name
+            )
 
             wl_rs_well = wl_rs.loc[wl_rs["NAME"] == well_name]
             wl_trends_well = wl_trends.loc[wl_trends["NAME"] == well_name]
@@ -439,10 +481,10 @@ def wl_regression_report(
                 gis_roads_df=gis_roads_df,
                 gis_ous_df=gis_ous_df,
             )
-            plt_cross_cor_lag(page_fig, grid_spec, wl_trends_well)
-            plt_wl_rs(page_fig, grid_spec, wl_rs_well)
+            lag_time = plt_cross_cor_lag(page_fig, grid_spec, wl_trends_well)
+            plt_wl_rs(page_fig, grid_spec, wl_rs_well, lag_time)
             wl_elevation_axis, wl_river_stage_axis = plt_wl_rs_timeseries(
-                wl_rs_well, page_fig, grid_spec
+                page_fig, grid_spec, wl_rs_well, lag_time
             )
             plt_std_res_pred_wl(page_fig, grid_spec, wl_trends_well)
             plt_legend(page_fig, grid_spec, wl_elevation_axis, wl_river_stage_axis)
