@@ -14,23 +14,24 @@ project-root/
 ├── README.md
 ├── environment.yml
 ├── configs/
-│   └── trend_config.toml
+│   └── config.toml
 ├── input/
 │   └── ...
 └── src/
     └── tta/
-        ├── run.py
+        ├── run_tta.py
         ├── config.py
         ├── utils.py
         ├── preprocessing/
         │   ├── prepare_chromium_chemistry.py
+        │   ├── prepare_chemistry_data.py
         │   ├── calculate_distance_00.py
         │   ├── chemistry_import_01.py
         │   ├── water_level_import_02.py
         │   ├── water_level_trends_03.py
         │   └── tobit_prep_04.py
         ├── model/
-        │   └── tobit_model_04_mod.py
+        │   └── tobit_model_04.py
         └── reporting/
             └── generate_report_05.py
 ```
@@ -70,45 +71,50 @@ tta configs/config.toml
 Alternative:
 
 ```bash
-python -m tta.run configs/config.toml
+python -m tta.run_tta configs/config.toml
 ```
 
-The TOML paths are expected to be relative to the project root.
+Paths in the TOML are expected to be relative to the project root.
 
-The paths in the TOML are expected to be relative to the project root.
+## Chemistry preparation
 
-## Chromium chemistry preparation
+Raw HEIS chemistry TXT files are listed directly in `config.toml`. Chemistry preparation runs automatically inside the workflow, with the mode controlled by `chem_prep_mode`:
 
-Chromium-specific chemistry preparation is handled outside the main workflow.
-
-Run:
-
-```bash
-prepare-chromium-chemistry \
-  --chem-files input/00_Data/Chemistry_Data/CY24/file1.txt input/00_Data/Chemistry_Data/CY24/file2.txt \
-  --year 2024 \
-  --output input/prepared_chemistry/prepared_chemistry_2024.parquet
+```toml
+[prep_chemistry]
+raw_chemistry_files = [
+  "input/00_Data/Chemistry_Data/CY24/file1.txt",
+  "input/00_Data/Chemistry_Data/CY24/file2.txt",
+]
+chem_prep_mode = "chromium"   # "chromium" | "single"
 ```
 
-The generated parquet file is then supplied to the main workflow as analyte-neutral chemistry input.
+**`"chromium"` mode** — combines filtered total Chromium and Hexavalent Chromium into a single analyte stream. The full workflow runs once.
+
+**`"single"` mode** — one or more analytes supplied as a list. The workflow runs end-to-end for each analyte in turn, producing a separate set of outputs per analyte:
+
+```toml
+chem_prep_mode = "single"
+analyte = ["Nitrate"]                 # single analyte
+analyte = ["Nitrate", "Uranium"]      # multiple analytes — workflow loops over each
+# filtered_keep_value = "Y"          # optional FILTERED column restriction
+```
 
 ## Outputs
 
-Outputs are written to the configured output directory and run-version subfolder.
-
-Typical outputs include:
+Outputs are written to the configured output directory and run-version subfolder. Analyte-specific files include the analyte name as a slug (e.g. `Nitrate`, `Hex_Filt_Chromium`).
 
 ```text
-DIST.csv
-STAGEDIST.csv
-Chem_TrendData_<run_id>.parquet
-TTA_results_<run_id>.csv
-TobitRegression_WLlag_<OU>_<run_id>.pdf
+prepared_chemistry_<analyte>_<run_id>.parquet
+Chem_TrendData_<analyte>_<run_id>.parquet
+TTA_full_term_stats_<analyte>_<run_id>.csv
+TTA_Results_<analyte>_<run_id>.csv
+TobitRegression_WLlag_<OU>_<analyte>_<run_id>.pdf
+WL_regression_<run_id>.pdf               ← water-level only, produced once
 tta.log
 ```
 
 `tta.log` contains progress messages, warnings, errors, and detailed debug information from the run.
-
 
 ## Code walkthrough
 
@@ -119,31 +125,30 @@ Main workflow entry point. It:
 1. reads the TOML configuration;
 2. creates the output directory;
 3. applies global well filters and optional `selected_wells`;
-4. runs each workflow step in sequence;
-5. writes outputs;
-6. launches reporting;
+4. runs Steps 00–03 once (analyte-independent);
+5. loops over each configured analyte, running Steps 01 and 04–05 per analyte;
+6. writes all outputs with the analyte name in the filename;
 7. writes progress and errors to `tta.log`.
 
 ### Step 00 — Distance calculations
 
-Calculates well distance to the river and distance to river-stage gauges. These results are used later to assign river-stage covariates and populate report metadata.
+Calculates well distance to the river and distance to river-stage gauges. Runs once — results are shared across all analytes.
 
-### Step 01 — Chemistry preprocessing
+### Steps 02–03 — Water-level preprocessing and trend analysis
 
-Imports and processes chemistry data. It handles non-detects, applies filters, joins metadata and river-stage information and prepares the chemistry time-series dataset for later Tobit modelling.
+Imports and processes water-level data (Step 02), then estimates groundwater-level trends and river-stage lag times (Step 03). Both steps run once and are shared across all analytes.
 
-### Step 02 — Water-level preprocessing
+### Step 01 — Chemistry preprocessing *(per analyte)*
 
-Imports and processes water-level data. It joins river-stage data, well metadata, and screen intervals, creating the water-level dataset used for lag and trend analysis.
+Reads raw HEIS TXT files and prepares the chemistry dataset for one analyte. Runs in two phases:
 
-### Step 03 — Water-level trend analysis
+1. **Raw data preparation** — analyte selection and filtering via `prepare_chromium_chemistry` or `prepare_chemistry_data` depending on `chem_prep_mode`. The prepared dataset is written to `output_dir` as a parquet.
+2. **Chemistry import** — non-detect handling, REVIEWQ and collection-purpose filtering, daily averaging, and joining of river-stage, well metadata, and screen interval data.
 
-Estimates the relationship between groundwater elevation, river stage and time. It calculates lag, number of observations, and p-values for the trend, river-stage term and date term.
+### Step 04 — Chemistry Tobit preparation and modelling *(per analyte)*
 
-### Step 04 — Chemistry Tobit preparation and modelling
+Prepares chemistry data for censored regression by applying trend breaks, assigning trend terms, and handling no-river-stage wells. Fits Tobit models and writes `TTA_full_term_stats_<analyte>_<run_id>.csv` and `TTA_Results_<analyte>_<run_id>.csv`.
 
-Prepares chemistry data for censored regression by applying trend breaks, assigning trend terms, handling no-river-stage wells and fitting Tobit models.
+### Step 05 — Reporting *(per analyte)*
 
-### Step 05 — Reporting
-
-Generates OU-level PDF reports.
+Generates OU-level PDF reports. The analyte name is used in plot axis labels (read directly from the chemistry data) and in the output PDF filename.

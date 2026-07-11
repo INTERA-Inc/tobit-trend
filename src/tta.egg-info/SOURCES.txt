@@ -16,6 +16,7 @@ src/tta/model/tobit_model_04.py
 src/tta/preprocessing/__init__.py
 src/tta/preprocessing/calculate_distance_00.py
 src/tta/preprocessing/chemistry_import_01.py
+src/tta/preprocessing/prepare_chemistry_data.py
 src/tta/preprocessing/prepare_chromium_chemistry.py
 src/tta/preprocessing/tobit_prep_04.py
 src/tta/preprocessing/water_level_import_02.py

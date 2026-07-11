@@ -222,6 +222,7 @@ def plt_report(
     ou_shapefile: Path,
     output_dir: Path,
     run_id: str,
+    analyte_label: str = "",
     n_workers: int | None = None,
 ):
     # Load and reproject GIS layers once before the well loop.
@@ -235,7 +236,8 @@ def plt_report(
 
     for ou in OUs:
         wells_ou = wells[wells["OU"] == ou]
-        output_file = output_dir / f"TobitRegression_WLlag_{ou}_{run_id}.pdf"
+        _label = f"_{analyte_label}" if analyte_label else ""
+        output_file = output_dir / f"TobitRegression_WLlag_{ou}{_label}_{run_id}.pdf"
 
         # Filter OU boundary once per OU, not once per well.
         gis_ou = gis_ous_full[gis_ous_full["Name"] == ou]
@@ -1084,6 +1086,7 @@ def generate_report(
     ous: list[str],
     map_crs: str,
     run_id: str,
+    analyte_label: str = "",
 ) -> None:
     # merge DIST to wells
     if "DIST" not in wells.columns:
@@ -1130,4 +1133,5 @@ def generate_report(
         ou_shapefile,
         output_dir,
         run_id,
+        analyte_label,
     )

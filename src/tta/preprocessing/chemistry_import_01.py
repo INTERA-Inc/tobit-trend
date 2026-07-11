@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Sequence
 
 import numpy as np
@@ -27,6 +27,7 @@ class ChemistryImportConfig:
     )
 
     trend_min_year: int = 2008
+    unit_conversions: list = field(default_factory=list)  # [{analyte, from_unit, to_unit, factor}]
 
 
 def read_chem_heis(path: str, eform: str = "%m/%d/%Y %H:%M:%S") -> pd.DataFrame:
@@ -191,10 +192,10 @@ def _combine_data_rs_chem(rs: pd.DataFrame, chem: pd.DataFrame) -> pd.DataFrame:
     for well_name, xwell in y.groupby("WELL_NAME", sort=False):
         well_out = []
 
-        for analyte_name, yan in xwell.groupby("ANALYTE", sort=False):
+        for analyte_name, yan in xwell.groupby("ANALYTE", sort=False, dropna=False):
             filt_out = []
 
-            for _, z in yan.groupby("FILTERED", sort=False):
+            for filt_key, z in yan.groupby("FILTERED", sort=False, dropna=False):
                 tmp = x.merge(z, on="EVENT", how="left", sort=False)
 
                 tmp["WELL_NAME"] = well_name
@@ -275,6 +276,14 @@ def run_chemistry_import(
     CHEM["MDL"] = pd.to_numeric(CHEM["MDL"], errors="coerce")
 
     CHEM = CHEM.loc[_year(CHEM["EVENT"]) <= yr].copy()
+
+    # Apply unit conversions before any substitution or processing
+    for conv in cfg.unit_conversions:
+        mask = (CHEM["ANALYTE"] == conv["analyte"]) & (CHEM["UNIT"] == conv["from_unit"])
+        if mask.any():
+            CHEM.loc[mask, "VAL"] = CHEM.loc[mask, "VAL"] * conv["factor"]
+            CHEM.loc[mask, "MDL"] = CHEM.loc[mask, "MDL"] * conv["factor"]
+            CHEM.loc[mask, "UNIT"] = conv["to_unit"]
 
     # Prepared chemistry
     CHEMISTRY = CHEM.copy()
