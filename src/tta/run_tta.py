@@ -196,7 +196,6 @@ def main() -> None:
         # ── Determine analyte run list ────────────────────────────────────────
         if config.chem_prep_mode == "chromium":
             _analyte_run_names = [config.chem_combined_analyte_name or "Hex. & Filt. Chromium"]
-            logger.info("Chemistry prep mode: chromium; analyte run list: %s", _analyte_run_names)
         elif config.chem_prep_mode == "single":
             if not config.chem_analytes:
                 raise ValueError(

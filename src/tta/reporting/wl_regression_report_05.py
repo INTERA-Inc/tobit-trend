@@ -19,6 +19,8 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 from pathlib import Path
 from typing import Tuple
 
+from tqdm import tqdm
+
 logger = logging.getLogger("tta")
 
 FIGURE_SIZE = (8.5, 11)
@@ -139,7 +141,18 @@ def plt_cross_cor_lag(
     """Render cross-correlation lag plot."""
     cross_cor_lag_plot = page_fig.add_subplot(grid_spec[4:7, 0:2])
     cod: pd.Series = wl_trends_well["COD"]
-    cod_df = pd.DataFrame(list(cod.iloc[0]))
+    cod_val = cod.iloc[0]
+    if not isinstance(cod_val, list) or len(cod_val) == 0:
+        cross_cor_lag_plot.text(
+            0.5, 0.5, "No cross-correlation data",
+            ha="center", va="center", transform=cross_cor_lag_plot.transAxes,
+            fontsize=FONT_SIZE_AXIS_LABELS, color=COLOR_DARK_GRAY,
+        )
+        cross_cor_lag_plot.set_facecolor(COLOR_LIGHT_GRAY)
+        cross_cor_lag_plot.set_xlabel("Lag Time (days)")
+        cross_cor_lag_plot.set_ylabel("Cross Correlation Coefficient")
+        return 0
+    cod_df = pd.DataFrame(cod_val)
     lags: pd.Series = cod_df["lag"]
     acfs: pd.Series = cod_df["acf"]
     max_acf_idx = np.argmax(acfs)
@@ -332,6 +345,18 @@ def plt_std_res_pred_wl(
     std_res_pred_wl_plot = page_fig.add_subplot(grid_spec[9:12, :])
     residuals: np.ndarray = np.array(wl_trends_well["RES"].iloc[0])
     pred_raw: np.ndarray = np.array(wl_trends_well["PRED"].iloc[0], dtype=float)
+
+    if len(residuals) < 2:
+        std_res_pred_wl_plot.text(
+            0.5, 0.5, "Insufficient residual data",
+            ha="center", va="center", transform=std_res_pred_wl_plot.transAxes,
+            fontsize=FONT_SIZE_AXIS_LABELS, color=COLOR_DARK_GRAY,
+        )
+        std_res_pred_wl_plot.set_facecolor(COLOR_LIGHT_GRAY)
+        std_res_pred_wl_plot.set_xlabel("Predicted Water-Level (m amsl)")
+        std_res_pred_wl_plot.set_ylabel("Standardized Residuals")
+        return
+
     log_mode: str = wl_trends_well["LOG"].iloc[0]
     if log_mode == "log":
         predicted_wl = np.exp(pred_raw)
@@ -339,7 +364,8 @@ def plt_std_res_pred_wl(
         predicted_wl = 10.0**pred_raw
     else:
         predicted_wl = pred_raw
-    std_residuals = residuals / np.std(residuals)
+    resid_std = np.std(residuals)
+    std_residuals = residuals / resid_std if resid_std > 0 else residuals
     std_res_pred_wl_plot.plot(
         predicted_wl, 
         std_residuals, 
@@ -436,10 +462,10 @@ def wl_regression_report(
 
     n_wells = len(wells)
     with PdfPages(out_path) as pdf:
-        for i in range(n_wells):
+        for i in tqdm(range(n_wells), desc="WL regression report", unit="well", leave=True):
             well: pd.Series = wells.iloc[i]
             well_name = well["NAME"]
-            logger.info(
+            logger.debug(
                 "WL regression report: well %d/%d — %s", i + 1, n_wells, well_name
             )
 
