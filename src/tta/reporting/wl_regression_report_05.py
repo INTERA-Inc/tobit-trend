@@ -383,11 +383,16 @@ def plt_std_res_pred_wl(
     std_res_pred_wl_plot.set_axisbelow(True)
     std_res_pred_wl_plot.set_xlabel("Predicted Water-Level (m amsl)")
     std_res_pred_wl_plot.set_ylabel("Standardized Residuals")
-    std_res_pred_wl_ymin, std_res_pred_wl_ymax = std_res_pred_wl_plot.get_ylim()
-    if std_res_pred_wl_ymin <= -2:
-        std_res_pred_wl_plot.axhline(-2, color=COLOR_BLACK, linestyle="--")
-    if std_res_pred_wl_ymax >= 2:
-        std_res_pred_wl_plot.axhline(2, color=COLOR_BLACK, linestyle="--")
+    std_res_ymin = math.floor(std_residuals.min())
+    std_res_ymax = math.ceil(std_residuals.max())
+    std_res_max = round(max(abs(std_res_ymin), abs(std_res_ymax)))
+    std_res_ticks = np.arange(-std_res_max, std_res_max + 0.5, 0.5)
+    std_res_pred_wl_plot.set_ylim(-std_res_max, std_res_max)
+    std_res_pred_wl_plot.set_yticks(std_res_ticks)
+    std_res_pred_wl_plot.margins(y=0.1)
+    std_res_pred_wl_plot.axhline(-2, color=COLOR_BLACK, linestyle=(0, (5, 5)), linewidth=1.25, dash_capstyle="round")
+    std_res_pred_wl_plot.axhline(2, color=COLOR_BLACK, linestyle=(0, (5, 5)), linewidth=1.25, dash_capstyle="round")
+    std_res_pred_wl_plot.axhline(0, color=COLOR_BLACK, linestyle=(0, (2, 3.5)), linewidth=1, dash_capstyle="round")
 
 
 def plt_legend(
