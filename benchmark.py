@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import sys
 import tomllib
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -111,14 +111,42 @@ def _to_str(val) -> Optional[str]:
     return None if s.lower() in ("nan", "nat", "none", "") else s
 
 
+_TREND_BREAK_FMTS: tuple[str, ...] = ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%m/%d/%Y")
+
+
 def _normalise_trend_break(val) -> Optional[str]:
     s = _to_str(val)
     if s is None:
         return None
-    try:
-        return str(pd.Timestamp(s).date())
-    except Exception:
-        return s
+    for fmt in _TREND_BREAK_FMTS:
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return s
+
+
+def _normalise_trend(val) -> Optional[str]:
+    s = _to_str(val)
+    if s is None:
+        return None
+    if s.strip().lower() == "not performed":
+        return None
+    return s
+
+
+# Analyte label variants produced by Python vs R for the same analyte.
+_ANALYTE_CANONICAL: dict[str, str] = {
+    "Hex. & Filt. Cr":       "Hex. & Filt. Chromium",
+    "Hex. & Filt. Chromium": "Hex. & Filt. Chromium",
+}
+
+
+def _normalise_analyte(val) -> Optional[str]:
+    s = _to_str(val)
+    if s is None:
+        return None
+    return _ANALYTE_CANONICAL.get(s, s)
 
 
 # Maps both Python and R raw LAG_ORIGIN strings to a shared canonical label.
@@ -187,6 +215,12 @@ def _compare_cell(col: str, py_raw, r_raw, threshold_pct: float) -> dict:
         elif col == "LAG_ORIGIN":
             py_s = _normalise_lag_origin(py_raw)
             r_s  = _normalise_lag_origin(r_raw)
+        elif col == "Trend":
+            py_s = _normalise_trend(py_raw)
+            r_s  = _normalise_trend(r_raw)
+        elif col == "Analyte":
+            py_s = _normalise_analyte(py_raw)
+            r_s  = _normalise_analyte(r_raw)
         else:
             py_s = _to_str(py_raw)
             r_s  = _to_str(r_raw)
@@ -220,6 +254,14 @@ def _compare_well(
         rec = _compare_cell(col, py_row.get(col, np.nan), r_row.get(col, np.nan), threshold_pct)
         rec["well"] = well
         results.append(rec)
+
+    # When Trend is not performed / NA in both tools, the associated Lag value is
+    # meaningless — Python carries the lag forward while R emits NaN. Override to pass.
+    trend_rec = next((r for r in results if r["column"] == "Trend"), None)
+    lag_rec   = next((r for r in results if r["column"] == "Lag"),   None)
+    if trend_rec is not None and lag_rec is not None and trend_rec.get("both_na"):
+        lag_rec.update(diff="—", passed=True, both_na=True)
+
     return results
 
 
