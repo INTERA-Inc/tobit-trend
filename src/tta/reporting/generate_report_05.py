@@ -38,7 +38,7 @@ FONT_SIZE_HEADER = 10
 FONT_SIZE_TEXT = 8
 FONT_SIZE_TABLE = 10
 FONT_SIZE_AXIS_LABELS = 9
-FONT_SIZE_LEGEND = 9
+FONT_SIZE_LEGEND = 8
 
 # Colors
 COLOR_LIGHT_GRAY = "#E5E5E5"
@@ -179,8 +179,9 @@ def _render_well_page(args: tuple) -> bytes:
 
     wl_elevation_axis = None
     wl_river_stage_axis = None
+    screen_rendered = False
     if well in wl_wells_set:
-        wl_elevation_axis, wl_river_stage_axis = plt_wl_rs(
+        wl_elevation_axis, wl_river_stage_axis, screen_rendered = plt_wl_rs(
             wl_rs_well,
             page_fig,
             grid_spec,
@@ -195,6 +196,7 @@ def _render_well_page(args: tuple) -> bytes:
         chem_concentrations_axis2,
         wl_elevation_axis,
         wl_river_stage_axis,
+        screen_rendered,
     )
 
     page_fig.subplots_adjust(left=FIGURE_LEFT_MARGIN, right=FIGURE_RIGHT_MARGIN)
@@ -741,6 +743,9 @@ def plt_chem(
     marker_face_colors = MARKER_FACE_COLORS
     marker_edge_colors = MARKER_EDGE_COLORS
 
+    pred_min_all = chem_min
+    pred_max_all = chem_max
+
     for trend_idx in range(len(chem_trends_well)):
         term_no = trend_idx + 1
 
@@ -826,6 +831,11 @@ def plt_chem(
 
                         ok = pred.notna() & np.isfinite(pred) & (pred > 0)
 
+                        pred_valid = pred.loc[ok]
+                        if not pred_valid.empty:
+                            pred_min_all = min(pred_min_all, float(pred_valid.min()))
+                            pred_max_all = max(pred_max_all, float(pred_valid.max()))
+
                         chem_concentrations_axis2.plot(
                             pred_term.loc[ok, "EVENT"],
                             pred.loc[ok],
@@ -835,6 +845,11 @@ def plt_chem(
                             label="Calculated Conc." if trend_idx == 0 else None,
                             zorder=1,
                         )
+
+    if pred_min_all > 0 and pred_max_all > pred_min_all:
+        ymin2 = 10 ** np.floor(np.log10(pred_min_all))
+        ymax2 = 10 ** np.ceil(np.log10(pred_max_all))
+        chem_concentrations_axis2.set_ylim(ymin2, ymax2)
 
     if not chem_nd.empty:
         chem_concentrations_axis.plot(
@@ -922,7 +937,9 @@ def plt_wl_rs(
             wl_elevations_clean.max(),
         ]
     )
-    wl_elevation_axis.set_ylim(wl_ymin, wl_ymax)
+    wl_range = wl_ymax - wl_ymin if wl_ymax > wl_ymin else 1.0
+    wl_pad = 0.05 * wl_range
+    wl_elevation_axis.set_ylim(wl_ymin - wl_pad, wl_ymax + wl_pad)
 
     # Right axis is display-only. River stage is scaled and drawn on the
     # water-level axis so it stays behind water-level observations.
@@ -965,13 +982,16 @@ def plt_wl_rs(
         facecolor=COLOR_BISQUE,
         edgecolor=COLOR_BLACK,
         linewidth=0.5,
+        label="Screened Interval",
         zorder=2,
     )
 
+    screen_rendered = False
     if (
         screen_ymin <= wl_elevations_clean.max()
         and screen_ymax >= wl_elevations_clean.min()
     ):
+        screen_rendered = True
         wl_elevation_axis.add_patch(screened_interval)
 
         n_lines = 5
@@ -1006,7 +1026,7 @@ def plt_wl_rs(
 
     wl_elevation_axis.set_xlim(chem_river_stage_axis.get_xlim())
     wl_river_stage_axis.set_xlim(chem_river_stage_axis.get_xlim())
-    return wl_elevation_axis, wl_river_stage_axis
+    return wl_elevation_axis, wl_river_stage_axis, screen_rendered
 
 
 def plt_legend(
@@ -1016,6 +1036,7 @@ def plt_legend(
     chem_concentrations_axis2: Axes,
     wl_elevation_axis: Axes,
     wl_river_stage_axis: Axes,
+    screen_rendered: bool = False,
 ):
     wl_elevation_handles, wl_elevation_labels = [], []
     wl_river_stage_handles, wl_river_stage_labels = [], []
@@ -1048,6 +1069,20 @@ def plt_legend(
         + calculated_concentrations_labels
     )
 
+    # Screened interval: append proxy patch explicitly after "Calculated Conc."
+    # Relying on get_legend_handles_labels() to collect add_patch() objects is
+    # unreliable across matplotlib versions, so screen_rendered is threaded
+    # directly from plt_wl_rs.
+    if screen_rendered and "Screened Interval" not in all_labels:
+        all_handles.append(
+            patches.Patch(
+                facecolor=COLOR_BISQUE,
+                edgecolor=COLOR_BLACK,
+                linewidth=0.5,
+            )
+        )
+        all_labels.append("Screened Interval")
+
     # Eventually we'll need to make a custom legend instead of grabbing all the legend info from the plots
     # Example:
     #
@@ -1066,7 +1101,8 @@ def plt_legend(
     legend_axis = page_fig.add_subplot(grid_spec[1, 3])
     legend_axis.set_axis_off()
     legend_axis.legend(
-        all_handles, all_labels, loc="center", frameon=False, fontsize=FONT_SIZE_LEGEND
+        all_handles, all_labels, loc="center", frameon=False,
+        fontsize=FONT_SIZE_LEGEND, labelspacing=0.3, handlelength=1.5, handletextpad=0.4,
     )
 
 
